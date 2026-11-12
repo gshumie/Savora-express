@@ -124,6 +124,7 @@ app.get('/api/checkout-config', (_req, res) => {
 });
 
 app.get([...publicFiles.keys()], (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
   return res.sendFile(path.join(__dirname, publicFiles.get(req.path)));
 });
 

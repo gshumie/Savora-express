@@ -122,6 +122,31 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 		});
 	}
 
+	async function hydrateCart() {
+		try {
+			const headers = getAuthHeaders();
+			const response = await fetch("/api/cart", { headers, cache: "no-store" });
+			if (response.ok) {
+				const data = await response.json();
+				const serverItems = Array.isArray(data.cart?.items) ? data.cart.items : [];
+				if (serverItems.length) {
+					for (const item of serverItems) {
+						const pid = item.productId || item.id;
+						const match = products.find((p) => p.id === pid || p.slug === item.slug || p.slug === pid);
+						if (match && item.quantity > 0) {
+							cart[match.id] = Math.max(cart[match.id] || 0, item.quantity);
+						}
+					}
+					saveCart();
+					updateCartIndicators();
+					renderCheckout();
+				}
+			}
+		} catch (error) {
+			console.warn("Unable to sync server cart:", error);
+		}
+	}
+
 	function loadCart() {
 		try {
 			const saved = JSON.parse(localStorage.getItem(CART_KEY) || "{}");
@@ -219,16 +244,35 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 		renderCheckout();
 		const product = products.find((item) => item.id === id);
 		showToast(`${product.name} added to your cart.`);
+
+		if (backendAvailable) {
+			fetch("/api/cart/items", {
+				method: "POST",
+				headers: getAuthHeaders({ "Content-Type": "application/json" }),
+				body: JSON.stringify({ productId: id, quantity: 1, sessionId: getSessionId() }),
+			}).catch((err) => console.warn("Background cart item sync failed:", err));
+		}
 	}
 
 	function changeQuantity(id, delta) {
 		if (!cart[id]) return;
 		const next = cart[id] + delta;
-		if (next <= 0) delete cart[id];
-		else cart[id] = Math.min(99, next);
+		if (next <= 0) {
+			removeFromCart(id);
+			return;
+		}
+		cart[id] = Math.min(99, next);
 		saveCart();
 		updateCartIndicators();
 		renderCheckout();
+
+		if (backendAvailable) {
+			fetch(`/api/cart/items/${id}`, {
+				method: "PUT",
+				headers: getAuthHeaders({ "Content-Type": "application/json" }),
+				body: JSON.stringify({ quantity: cart[id], sessionId: getSessionId() }),
+			}).catch((err) => console.warn("Background cart update sync failed:", err));
+		}
 	}
 
 	function removeFromCart(id) {
@@ -238,6 +282,13 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 		updateCartIndicators();
 		renderCheckout();
 		showToast("Item removed from your cart.");
+
+		if (backendAvailable) {
+			fetch(`/api/cart/items/${id}`, {
+				method: "DELETE",
+				headers: getAuthHeaders(),
+			}).catch((err) => console.warn("Background cart remove sync failed:", err));
+		}
 	}
 
 	function dishCard(product) {
@@ -394,11 +445,39 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 		if (!itemsRegion) return;
 		const checkoutLayout = document.querySelector("#checkout-layout");
 		const emptyState = document.querySelector("#checkout-empty");
+		const submitButton = document.querySelector("#place-demo-order");
+
+		if (checkoutLayout) checkoutLayout.hidden = false;
+		if (emptyState) emptyState.hidden = true;
+
 		const items = getItems();
 		const isEmpty = items.length === 0;
-		checkoutLayout.hidden = isEmpty;
-		emptyState.hidden = !isEmpty;
-		if (isEmpty) return;
+
+		if (isEmpty) {
+			itemsRegion.innerHTML = `
+				<div class="empty-cart-message" style="padding:22px 16px;border:1px dashed var(--line);border-radius:12px;text-align:center;background:#faf8f5;margin-bottom:16px;">
+					<strong style="display:block;margin-bottom:6px;color:var(--charcoal);font-size:15px;">Your cart is empty</strong>
+					<span style="font-size:13px;color:var(--muted);display:block;margin-bottom:14px;">Select dishes from our menu to place an order.</span>
+					<a class="button button-small" href="menu.html">Browse the menu</a>
+				</div>
+			`;
+			const isPickup = document.querySelector("input[name='fulfillment'][value='pickup']")?.checked || false;
+			document.querySelector("#summary-subtotal").textContent = moneyMinorUnits(0);
+			document.querySelector("#summary-tax").textContent = moneyMinorUnits(0);
+			document.querySelector("#summary-delivery").textContent = isPickup ? "Free" : moneyMinorUnits(10000);
+			document.querySelector("#delivery-label").textContent = isPickup ? "Pickup" : "Delivery";
+			document.querySelector("#summary-total").textContent = isPickup ? moneyMinorUnits(0) : moneyMinorUnits(10000);
+			if (submitButton) {
+				submitButton.disabled = true;
+				submitButton.textContent = "Your cart is empty";
+			}
+			return;
+		}
+
+		if (submitButton) {
+			submitButton.disabled = !etbPricesApproved;
+			submitButton.textContent = "Pay securely";
+		}
 
 		itemsRegion.innerHTML = items.map(({ product, quantity }) => {
 			const unitPriceMinorUnits = toMinorUnits(product.price);
@@ -728,10 +807,17 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 		return headers;
 	}
 
+	function escapeHtml(text) {
+		const div = document.createElement("div");
+		div.textContent = text || "";
+		return div.innerHTML;
+	}
+
 	function updateAccountLinks() {
 		const user = getAuthUser();
 		const isCheckout = document.body.dataset.page === "checkout";
 		const loginUrl = isCheckout ? "login.html?redirect=checkout" : "login.html";
+
 		document.querySelectorAll(".account-link").forEach((link) => {
 			if (user) {
 				if (user.role === "ADMIN") {
@@ -749,7 +835,68 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 				link.setAttribute("aria-label", "Sign in or create an account");
 			}
 		});
+
+		const firstName = user?.name ? user.name.split(" ")[0] : "Account";
+		const safeName = escapeHtml(firstName);
+
+		// Update in-nav auth slot (displayed in mobile menu drawer & main navigation)
+		document.querySelectorAll(".nav-auth-slot, #nav-auth-slot").forEach((slot) => {
+			if (!user) {
+				slot.innerHTML = `<a href="${loginUrl}" class="nav-auth-link" id="nav-auth-link">LOGIN</a>`;
+			} else if (user.role === "ADMIN") {
+				slot.innerHTML = `
+					<a href="admin.html" class="nav-auth-link nav-admin-badge" title="Admin Portal">ADMIN</a>
+					<a href="${loginUrl}" class="nav-auth-link" title="Account Profile">${safeName}</a>
+					<button type="button" class="nav-logout-btn" data-action="logout" title="Sign Out">LOGOUT</button>
+				`;
+			} else {
+				slot.innerHTML = `
+					<a href="${loginUrl}" class="nav-auth-link" title="Account Profile">${safeName}</a>
+					<button type="button" class="nav-logout-btn" data-action="logout" title="Sign Out">LOGOUT</button>
+				`;
+			}
+		});
+
+		// Update header-auth in top nav-actions (prominent desktop button)
+		document.querySelectorAll(".header-auth, #header-auth").forEach((container) => {
+			if (!user) {
+				container.innerHTML = `<a href="${loginUrl}" class="header-login-btn" id="header-login-btn">Login</a>`;
+			} else if (user.role === "ADMIN") {
+				container.innerHTML = `
+					<a href="admin.html" class="header-admin-btn" title="Admin Portal">Admin</a>
+					<a href="${loginUrl}" class="header-user-btn" title="Profile">${safeName}</a>
+					<button type="button" class="header-logout-btn" data-action="logout" title="Sign Out">Logout</button>
+				`;
+			} else {
+				container.innerHTML = `
+					<a href="${loginUrl}" class="header-user-btn" title="Profile">${safeName}</a>
+					<button type="button" class="header-logout-btn" data-action="logout" title="Sign Out">Logout</button>
+				`;
+			}
+		});
 	}
+
+	document.addEventListener("click", async (e) => {
+		const logoutBtn = e.target.closest('[data-action="logout"]');
+		if (!logoutBtn) return;
+		e.preventDefault();
+		const token = getAuthToken();
+		if (token) {
+			try {
+				await fetch("/api/auth/logout", {
+					method: "POST",
+					headers: { Authorization: `Bearer ${token}` },
+				});
+			} catch {}
+		}
+		clearAuth();
+		showToast("Signed out successfully.");
+		if (document.body.dataset.page === "admin") {
+			window.location.href = "login.html";
+		} else {
+			updateAccountLinks();
+		}
+	});
 
 	function initAuth() {
 		if (document.body.dataset.page !== "login") return;
@@ -1275,6 +1422,7 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 		initForms();
 		initAuth();
 		initAdmin();
+		await hydrateCart();
 	}
 
 	boot();

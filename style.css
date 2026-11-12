@@ -463,3 +463,124 @@ button { color: inherit; }
 .admin-modal { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
 .admin-modal-card { background: white; border-radius: 8px; padding: 28px; max-width: 520px; width: 100%; box-shadow: var(--shadow); max-height: 90vh; overflow-y: auto; }
 
+/* Visible Header Auth & Nav Login/Admin Styling */
+.header-auth {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+.header-login-btn,
+.header-user-btn,
+.header-admin-btn,
+.header-logout-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 16px;
+	border-radius: 999px;
+	font-size: 12px;
+	font-weight: 750;
+	letter-spacing: 0.5px;
+	text-decoration: none;
+	cursor: pointer;
+	transition: transform 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+	line-height: 1;
+}
+.header-login-btn {
+	background: var(--orange);
+	color: #ffffff !important;
+	border: 1px solid var(--orange);
+}
+.header-login-btn:hover {
+	background: var(--orange-dark);
+	border-color: var(--orange-dark);
+	transform: translateY(-1px);
+}
+.header-admin-btn {
+	background: var(--charcoal);
+	color: #ffffff !important;
+	border: 1px solid var(--charcoal);
+}
+.header-admin-btn:hover {
+	background: #374151;
+	border-color: #374151;
+	transform: translateY(-1px);
+}
+.header-user-btn {
+	background: #f5f2eb;
+	color: var(--charcoal) !important;
+	border: 1px solid var(--line);
+}
+.header-user-btn:hover {
+	background: #eee8dc;
+	border-color: #d8d0c2;
+}
+.header-logout-btn {
+	background: transparent;
+	border: 1px solid var(--line);
+	color: var(--muted);
+}
+.header-logout-btn:hover {
+	background: #fee2e2;
+	border-color: #fca5a5;
+	color: #b91c1c;
+}
+
+.nav-auth-slot {
+	display: inline-flex;
+	align-items: center;
+	gap: 12px;
+}
+.nav-auth-link {
+	position: relative;
+	padding: 8px 0;
+	color: #494640;
+	font-size: 11px;
+	font-weight: 850;
+	letter-spacing: 1px;
+	text-decoration: none;
+}
+.nav-admin-badge {
+	background: var(--charcoal);
+	color: #ffffff !important;
+	padding: 3px 8px !important;
+	border-radius: 6px;
+	font-size: 10px !important;
+	letter-spacing: 1.2px;
+}
+.nav-logout-btn {
+	background: none;
+	border: 0;
+	padding: 8px 0;
+	font-family: inherit;
+	font-size: 11px;
+	font-weight: 850;
+	letter-spacing: 1px;
+	color: var(--tomato);
+	cursor: pointer;
+}
+.nav-logout-btn:hover {
+	color: #991b1b;
+}
+
+@media (max-width: 800px) {
+	.header-auth { display: none; }
+	.nav-auth-slot {
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 4px;
+		padding-top: 8px;
+		margin-top: 6px;
+		border-top: 1px solid #f0ece7;
+	}
+	.nav-auth-link, .nav-logout-btn {
+		padding: 12px 7px;
+		text-align: left;
+	}
+	.nav-admin-badge {
+		text-align: center;
+	}
+}
+
+
