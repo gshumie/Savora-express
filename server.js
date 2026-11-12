@@ -88,6 +88,10 @@ const publicFiles = new Map([
   ['/checkout.html', 'checkout.html'],
   ['/contact', 'contact.html'],
   ['/contact.html', 'contact.html'],
+  ['/login', 'login.html'],
+  ['/login.html', 'login.html'],
+  ['/admin', 'admin.html'],
+  ['/admin.html', 'admin.html'],
   ['/style.css', 'style.css'],
   ['/script.js', 'script.js'],
   ['/money.js', 'src/lib/money.js'],
@@ -147,6 +151,30 @@ app.get('/api', (_req, res) => {
     name: 'Savora Express API',
     version: '1.0.0',
     status: 'online',
+  });
+});
+
+app.get('/api/payments/config', (_req, res) => {
+  const paymentProvider = resolvePaymentProvider(config);
+  let paymentEnvironment = null;
+
+  if (paymentProvider === 'chapa') {
+    paymentEnvironment = config.chapaEnvironment;
+  } else if (paymentProvider === 'stripe') {
+    if (config.stripeSecretKey.startsWith('sk_live_') || config.stripeSecretKey.startsWith('rk_live_')) {
+      paymentEnvironment = 'live';
+    } else if (config.stripeSecretKey.startsWith('sk_test_') || config.stripeSecretKey.startsWith('rk_test_')) {
+      paymentEnvironment = 'test';
+    }
+  } else if (paymentProvider === 'demo') {
+    paymentEnvironment = 'test';
+  }
+
+  res.json({
+    currency: CURRENCY,
+    pricesApproved: config.etbPricesApproved,
+    paymentProvider,
+    paymentEnvironment,
   });
 });
 

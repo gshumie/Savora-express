@@ -9,6 +9,8 @@
           "*.html",
           "*.css",
           "*.js",
+          "src/**",
+          "prisma/**",
           "assets/**",
           "images/**",
           "public/**"

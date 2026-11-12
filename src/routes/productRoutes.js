@@ -124,4 +124,41 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { name, categoryId, price, description, image, badge, featured, stock, isActive } = req.body || {};
+    const data = {};
+    if (name !== undefined) data.name = String(name).trim();
+    if (categoryId !== undefined) data.categoryId = categoryId;
+    if (price !== undefined) data.price = Number(price);
+    if (description !== undefined) data.description = String(description);
+    if (image !== undefined) data.image = String(image);
+    if (badge !== undefined) data.badge = badge ? String(badge) : null;
+    if (featured !== undefined) data.featured = Boolean(featured);
+    if (stock !== undefined) data.stock = Number(stock);
+    if (isActive !== undefined) data.isActive = Boolean(isActive);
+
+    const product = await prisma.product.update({
+      where: { id: req.params.id },
+      data,
+      include: { category: true },
+    });
+
+    return res.json({ product: mapProduct(product), message: 'Product updated successfully.' });
+  } catch (error) {
+    console.error('Update product error:', error);
+    return res.status(500).json({ error: 'Unable to update product.' });
+  }
+});
+
+router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await prisma.product.delete({ where: { id: req.params.id } });
+    return res.json({ success: true, message: 'Product deleted successfully.' });
+  } catch (error) {
+    console.error('Delete product error:', error);
+    return res.status(500).json({ error: 'Unable to delete product.' });
+  }
+});
+
 export { router as productRoutes };

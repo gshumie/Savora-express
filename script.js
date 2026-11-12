@@ -651,6 +651,557 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 		renderCheckout();
 	});
 
+	const AUTH_TOKEN_KEY = "savora-auth-token";
+	const AUTH_USER_KEY = "savora-user";
+
+	function getAuthToken() {
+		return localStorage.getItem(AUTH_TOKEN_KEY);
+	}
+
+	function getAuthUser() {
+		try {
+			return JSON.parse(localStorage.getItem(AUTH_USER_KEY) || "null");
+		} catch {
+			return null;
+		}
+	}
+
+	function setAuth(token, user) {
+		localStorage.setItem(AUTH_TOKEN_KEY, token);
+		localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+		document.cookie = `savora_token=${token}; path=/; max-age=604800; SameSite=Lax`;
+		updateAccountLinks();
+	}
+
+	function clearAuth() {
+		localStorage.removeItem(AUTH_TOKEN_KEY);
+		localStorage.removeItem(AUTH_USER_KEY);
+		document.cookie = "savora_token=; path=/; max-age=0; SameSite=Lax";
+		updateAccountLinks();
+	}
+
+	function updateAccountLinks() {
+		const user = getAuthUser();
+		document.querySelectorAll(".account-link").forEach((link) => {
+			if (user) {
+				if (user.role === "ADMIN") {
+					link.href = "admin.html";
+					link.title = `Admin: ${user.name}`;
+					link.setAttribute("aria-label", "Admin Console");
+				} else {
+					link.href = "login.html";
+					link.title = `Signed in as ${user.name}`;
+					link.setAttribute("aria-label", "Account Profile");
+				}
+			} else {
+				link.href = "login.html";
+				link.title = "Sign in or create an account";
+				link.setAttribute("aria-label", "Sign in or create an account");
+			}
+		});
+	}
+
+	function initAuth() {
+		if (document.body.dataset.page !== "login") return;
+
+		const profileView = document.querySelector("#auth-profile-view");
+		const formsContainer = document.querySelector("#auth-forms-container");
+		const tabLogin = document.querySelector("#tab-btn-login");
+		const tabRegister = document.querySelector("#tab-btn-register");
+		const loginForm = document.querySelector("#login-form");
+		const registerForm = document.querySelector("#register-form");
+		const statusMsg = document.querySelector("#auth-status-message");
+		const linkSwitchRegister = document.querySelector("#link-switch-to-register");
+		const linkSwitchLogin = document.querySelector("#link-switch-to-login");
+		const btnLogout = document.querySelector("#btn-logout");
+		const btnAdminPortal = document.querySelector("#btn-admin-portal");
+
+		const params = new URLSearchParams(window.location.search);
+		const redirect = params.get("redirect");
+
+		function setTab(tab) {
+			if (statusMsg) statusMsg.textContent = "";
+			if (tab === "register") {
+				tabRegister.classList.add("active");
+				tabRegister.setAttribute("aria-selected", "true");
+				tabLogin.classList.remove("active");
+				tabLogin.setAttribute("aria-selected", "false");
+				registerForm.hidden = false;
+				loginForm.hidden = true;
+			} else {
+				tabLogin.classList.add("active");
+				tabLogin.setAttribute("aria-selected", "true");
+				tabRegister.classList.remove("active");
+				tabRegister.setAttribute("aria-selected", "false");
+				loginForm.hidden = false;
+				registerForm.hidden = true;
+			}
+		}
+
+		if (tabLogin && tabRegister) {
+			tabLogin.addEventListener("click", () => setTab("login"));
+			tabRegister.addEventListener("click", () => setTab("register"));
+		}
+		if (linkSwitchRegister) {
+			linkSwitchRegister.addEventListener("click", (e) => { e.preventDefault(); setTab("register"); });
+		}
+		if (linkSwitchLogin) {
+			linkSwitchLogin.addEventListener("click", (e) => { e.preventDefault(); setTab("login"); });
+		}
+		if (window.location.hash === "#register" || params.get("tab") === "register") {
+			setTab("register");
+		}
+
+		async function checkActiveProfile() {
+			const token = getAuthToken();
+			if (!token) return;
+			try {
+				const response = await fetch("/api/auth/profile", {
+					headers: { Authorization: `Bearer ${token}` },
+				});
+				if (response.ok) {
+					const data = await response.json();
+					if (data.user) {
+						formsContainer.hidden = true;
+						profileView.hidden = false;
+						document.querySelector("#profile-welcome-heading").textContent = `Welcome, ${data.user.name}!`;
+						document.querySelector("#profile-email-text").textContent = data.user.email;
+						document.querySelector("#profile-role-badge").textContent = data.user.role === "ADMIN" ? "Administrator" : "Customer";
+						if (data.user.role === "ADMIN" && btnAdminPortal) {
+							btnAdminPortal.hidden = false;
+						}
+					}
+				} else {
+					clearAuth();
+				}
+			} catch {}
+		}
+
+		checkActiveProfile();
+
+		if (loginForm) {
+			loginForm.addEventListener("submit", async (e) => {
+				e.preventDefault();
+				const email = document.querySelector("#login-email").value.trim();
+				const password = document.querySelector("#login-password").value;
+				if (!email || !password) {
+					statusMsg.textContent = "Please provide your email and password.";
+					return;
+				}
+				const btn = document.querySelector("#btn-submit-login");
+				btn.disabled = true;
+				statusMsg.textContent = "Signing in…";
+				try {
+					const res = await fetch("/api/auth/login", {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ email, password, sessionId: getSessionId() }),
+					});
+					const data = await res.json();
+					if (!res.ok) throw new Error(data.error || "Login failed.");
+					setAuth(data.token, data.user);
+					showToast(`Welcome back, ${data.user.name}!`);
+					if (data.user.role === "ADMIN") {
+						window.location.href = "admin.html";
+					} else if (redirect === "checkout") {
+						window.location.href = "checkout.html";
+					} else {
+						window.location.href = "menu.html";
+					}
+				} catch (err) {
+					statusMsg.textContent = err.message;
+					btn.disabled = false;
+				}
+			});
+		}
+
+		if (registerForm) {
+			registerForm.addEventListener("submit", async (e) => {
+				e.preventDefault();
+				const name = document.querySelector("#register-name").value.trim();
+				const email = document.querySelector("#register-email").value.trim();
+				const password = document.querySelector("#register-password").value;
+				if (!name || !email || !password) {
+					statusMsg.textContent = "Please fill in all fields.";
+					return;
+				}
+				if (password.length < 6) {
+					statusMsg.textContent = "Password must be at least 6 characters.";
+					return;
+				}
+				const btn = document.querySelector("#btn-submit-register");
+				btn.disabled = true;
+				statusMsg.textContent = "Creating your account…";
+				try {
+					const res = await fetch("/api/auth/register", {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ name, email, password }),
+					});
+					const data = await res.json();
+					if (!res.ok) throw new Error(data.error || "Registration failed.");
+					setAuth(data.token, data.user);
+					showToast(`Welcome to Savora Express, ${data.user.name}!`);
+					if (data.user.role === "ADMIN") {
+						window.location.href = "admin.html";
+					} else if (redirect === "checkout") {
+						window.location.href = "checkout.html";
+					} else {
+						window.location.href = "menu.html";
+					}
+				} catch (err) {
+					statusMsg.textContent = err.message;
+					btn.disabled = false;
+				}
+			});
+		}
+
+		if (btnLogout) {
+			btnLogout.addEventListener("click", async () => {
+				const token = getAuthToken();
+				if (token) {
+					try {
+						await fetch("/api/auth/logout", {
+							method: "POST",
+							headers: { Authorization: `Bearer ${token}` },
+						});
+					} catch {}
+				}
+				clearAuth();
+				showToast("Signed out successfully.");
+				formsContainer.hidden = false;
+				profileView.hidden = true;
+				setTab("login");
+			});
+		}
+	}
+
+	function initAdmin() {
+		if (document.body.dataset.page !== "admin") return;
+
+		const guard = document.querySelector("#admin-auth-guard");
+		const content = document.querySelector("#admin-dashboard-content");
+		const welcomeMsg = document.querySelector("#admin-user-welcome");
+		const btnRefresh = document.querySelector("#btn-refresh-dashboard");
+		const btnLogout = document.querySelector("#admin-logout-btn");
+		const tabOrders = document.querySelector("#tab-btn-orders");
+		const tabMenu = document.querySelector("#tab-btn-menu");
+		const panelOrders = document.querySelector("#panel-orders");
+		const panelMenu = document.querySelector("#panel-menu");
+		const btnToggleAddDish = document.querySelector("#btn-toggle-add-dish");
+		const btnCancelAddDish = document.querySelector("#btn-cancel-add-dish");
+		const addDishPanel = document.querySelector("#add-dish-panel");
+		const addDishForm = document.querySelector("#add-dish-form");
+
+		const token = getAuthToken();
+
+		async function verifyAdmin() {
+			if (!token) {
+				guard.hidden = false;
+				content.hidden = true;
+				return false;
+			}
+			try {
+				const res = await fetch("/api/auth/profile", {
+					headers: { Authorization: `Bearer ${token}` },
+				});
+				if (!res.ok) throw new Error("Auth failed");
+				const data = await res.json();
+				if (data.user?.role !== "ADMIN") {
+					guard.hidden = false;
+					content.hidden = true;
+					return false;
+				}
+				welcomeMsg.textContent = `Signed in as ${data.user.name} (${data.user.email})`;
+				guard.hidden = true;
+				content.hidden = false;
+				return true;
+			} catch {
+				guard.hidden = false;
+				content.hidden = true;
+				return false;
+			}
+		}
+
+		if (tabOrders && tabMenu) {
+			tabOrders.addEventListener("click", () => {
+				tabOrders.classList.add("active");
+				tabOrders.setAttribute("aria-selected", "true");
+				tabMenu.classList.remove("active");
+				tabMenu.setAttribute("aria-selected", "false");
+				panelOrders.hidden = false;
+				panelMenu.hidden = true;
+			});
+			tabMenu.addEventListener("click", () => {
+				tabMenu.classList.add("active");
+				tabMenu.setAttribute("aria-selected", "true");
+				tabOrders.classList.remove("active");
+				tabOrders.setAttribute("aria-selected", "false");
+				panelMenu.hidden = false;
+				panelOrders.hidden = true;
+			});
+		}
+
+		if (btnToggleAddDish) {
+			btnToggleAddDish.addEventListener("click", () => {
+				addDishPanel.hidden = !addDishPanel.hidden;
+			});
+		}
+		if (btnCancelAddDish) {
+			btnCancelAddDish.addEventListener("click", () => {
+				addDishPanel.hidden = true;
+				addDishForm.reset();
+			});
+		}
+
+		async function loadLiveConfig() {
+			try {
+				const res = await fetch("/api/checkout-config", { cache: "no-store" });
+				const data = await res.json();
+				const providerEl = document.querySelector("#admin-payment-provider");
+				const envEl = document.querySelector("#admin-payment-env");
+				const approvalEl = document.querySelector("#admin-price-approval");
+				if (providerEl) {
+					providerEl.textContent = (data.paymentProvider || "demo").toUpperCase();
+					providerEl.className = `status-pill ${data.paymentProvider === "chapa" ? "success" : "warning"}`;
+				}
+				if (envEl) envEl.textContent = (data.paymentEnvironment || "test").toUpperCase();
+				if (approvalEl) {
+					approvalEl.textContent = data.pricesApproved ? "APPROVED" : "PENDING APPROVAL";
+					approvalEl.className = `status-pill ${data.pricesApproved ? "success" : "danger"}`;
+				}
+			} catch (err) {
+				console.error("Admin live config error:", err);
+			}
+		}
+
+		async function loadSummary() {
+			try {
+				const res = await fetch("/api/admin/summary", {
+					headers: { Authorization: `Bearer ${token}` },
+				});
+				if (!res.ok) return;
+				const { summary } = await res.json();
+				document.querySelector("#stat-total-orders").textContent = String(summary.totalOrders || 0);
+				document.querySelector("#stat-total-revenue").textContent = money(summary.totalRevenue || 0);
+				document.querySelector("#stat-total-customers").textContent = String(summary.customers || 0);
+				document.querySelector("#stat-total-products").textContent = String(summary.products || 0);
+			} catch (err) {
+				console.error("Admin summary error:", err);
+			}
+		}
+
+		async function loadOrders() {
+			const tbody = document.querySelector("#orders-table-body");
+			try {
+				const res = await fetch("/api/admin/orders", {
+					headers: { Authorization: `Bearer ${token}` },
+				});
+				if (!res.ok) throw new Error("Could not load orders");
+				const { orders } = await res.json();
+				if (!orders || orders.length === 0) {
+					tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted);">No customer orders placed yet.</td></tr>`;
+					return;
+				}
+				tbody.innerHTML = orders.map((o) => {
+					const date = new Date(o.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+					const itemsSummary = o.items?.map((i) => `${i.quantity}x ${i.product?.name || "Item"}`).join(", ") || "—";
+					const paymentStatus = o.payment?.status || "PENDING";
+					const paymentPillClass = paymentStatus === "PAID" ? "success" : paymentStatus === "FAILED" ? "danger" : "warning";
+					return `
+						<tr data-order-id="${o.id}">
+							<td><strong>${o.orderNumber}</strong></td>
+							<td style="white-space:nowrap;font-size:11px;">${date}</td>
+							<td>
+								<strong>${o.customerName}</strong><br>
+								<small style="color:var(--muted)">${o.customerEmail}</small>
+								${o.customerPhone ? `<br><small style="color:var(--muted)">${o.customerPhone}</small>` : ""}
+							</td>
+							<td style="max-width:200px;font-size:11px;" title="${itemsSummary}">${itemsSummary}</td>
+							<td><strong>${money(o.total)}</strong></td>
+							<td><span class="status-pill ${paymentPillClass}">${paymentStatus}</span></td>
+							<td style="text-transform:capitalize;">${o.fulfillmentType || "Delivery"}</td>
+							<td>
+								<select class="table-status-select" data-order-status-select="${o.id}">
+									${["PENDING", "CONFIRMED", "PREPARING", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"].map(
+										(s) => `<option value="${s}" ${o.status === s ? "selected" : ""}>${s}</option>`
+									).join("")}
+								</select>
+							</td>
+							<td>
+								<button type="button" class="table-action-btn" data-action="update-order-status" data-order-id="${o.id}">Update</button>
+							</td>
+						</tr>
+					`;
+				}).join("");
+			} catch (err) {
+				tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--tomato);">${err.message}</td></tr>`;
+			}
+		}
+
+		async function loadDishes() {
+			const tbody = document.querySelector("#dishes-table-body");
+			try {
+				const res = await fetch("/api/products", { cache: "no-store" });
+				if (!res.ok) throw new Error("Could not load products");
+				const data = await res.json();
+				const catalog = Array.isArray(data?.products) ? data.products : [];
+				if (catalog.length === 0) {
+					tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--muted);">No menu items found. Run database seed to populate.</td></tr>`;
+					return;
+				}
+				tbody.innerHTML = catalog.map((p) => {
+					const isActive = p.isActive !== false;
+					return `
+						<tr data-product-id="${p.id}">
+							<td>
+								<div style="display:flex;align-items:center;gap:10px;">
+									<img src="${p.image}" alt="" style="width:38px;height:38px;border-radius:4px;object-fit:cover;">
+									<div>
+										<strong>${p.name}</strong>
+										${p.badge ? `<br><small class="dish-badge" style="position:static;font-size:9px;display:inline-block;margin-top:2px;">${p.badge}</small>` : ""}
+									</div>
+								</div>
+							</td>
+							<td>${p.category || "General"}</td>
+							<td><strong>${money(p.price)}</strong></td>
+							<td>${p.stock ?? 50}</td>
+							<td>
+								<span class="status-pill ${isActive ? "success" : "danger"}">${isActive ? "ACTIVE" : "INACTIVE"}</span>
+							</td>
+							<td>
+								<button type="button" class="table-action-btn" data-action="toggle-product" data-product-id="${p.id}" data-active="${isActive}">
+									${isActive ? "Deactivate" : "Activate"}
+								</button>
+							</td>
+						</tr>
+					`;
+				}).join("");
+			} catch (err) {
+				tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--tomato);">${err.message}</td></tr>`;
+			}
+		}
+
+		async function loadCategories() {
+			const select = document.querySelector("#dish-category");
+			if (!select) return;
+			try {
+				const res = await fetch("/api/products/categories");
+				const { categories } = await res.json();
+				if (categories && categories.length) {
+					select.innerHTML = '<option value="">Select a category</option>' + categories.map((c) => `<option value="${c.id}">${c.name}</option>`).join("");
+				}
+			} catch {}
+		}
+
+		document.addEventListener("click", async (e) => {
+			const btn = e.target.closest('[data-action="update-order-status"]');
+			if (!btn) return;
+			const orderId = btn.dataset.orderId;
+			const select = document.querySelector(`[data-order-status-select="${orderId}"]`);
+			if (!select) return;
+			const newStatus = select.value;
+			btn.disabled = true;
+			try {
+				const res = await fetch(`/api/admin/orders/${orderId}/status`, {
+					method: "PATCH",
+					headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+					body: JSON.stringify({ status: newStatus }),
+				});
+				if (!res.ok) throw new Error("Could not update order status.");
+				showToast(`Order status updated to ${newStatus}.`);
+			} catch (err) {
+				showToast(err.message, true);
+			} finally {
+				btn.disabled = false;
+			}
+		});
+
+		document.addEventListener("click", async (e) => {
+			const btn = e.target.closest('[data-action="toggle-product"]');
+			if (!btn) return;
+			const productId = btn.dataset.productId;
+			const currentActive = btn.dataset.active === "true";
+			btn.disabled = true;
+			try {
+				const res = await fetch(`/api/products/${productId}`, {
+					method: "PATCH",
+					headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+					body: JSON.stringify({ isActive: !currentActive }),
+				});
+				if (!res.ok) throw new Error("Could not update dish.");
+				showToast(`Dish is now ${!currentActive ? "Active" : "Inactive"}.`);
+				loadDishes();
+			} catch (err) {
+				showToast(err.message, true);
+			} finally {
+				btn.disabled = false;
+			}
+		});
+
+		if (addDishForm) {
+			addDishForm.addEventListener("submit", async (e) => {
+				e.preventDefault();
+				const formData = new FormData(addDishForm);
+				const payload = {
+					name: formData.get("name"),
+					categoryId: formData.get("categoryId"),
+					price: Number(formData.get("price")),
+					stock: Number(formData.get("stock") || 50),
+					description: formData.get("description"),
+					image: formData.get("image") || undefined,
+				};
+				const submitBtn = addDishForm.querySelector('button[type="submit"]');
+				submitBtn.disabled = true;
+				try {
+					const res = await fetch("/api/products", {
+						method: "POST",
+						headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+						body: JSON.stringify(payload),
+					});
+					const data = await res.json();
+					if (!res.ok) throw new Error(data.error || "Could not add dish.");
+					showToast(`Added "${payload.name}" to menu.`);
+					addDishForm.reset();
+					addDishPanel.hidden = true;
+					loadDishes();
+					loadSummary();
+				} catch (err) {
+					showToast(err.message, true);
+				} finally {
+					submitBtn.disabled = false;
+				}
+			});
+		}
+
+		if (btnRefresh) {
+			btnRefresh.addEventListener("click", () => {
+				loadLiveConfig();
+				loadSummary();
+				loadOrders();
+				loadDishes();
+				showToast("Dashboard refreshed.");
+			});
+		}
+
+		if (btnLogout) {
+			btnLogout.addEventListener("click", () => {
+				clearAuth();
+				window.location.href = "login.html";
+			});
+		}
+
+		verifyAdmin().then((ok) => {
+			if (ok) {
+				loadLiveConfig();
+				loadSummary();
+				loadOrders();
+				loadDishes();
+				loadCategories();
+			}
+		});
+	}
+
 	async function boot() {
 		document.querySelectorAll("[data-year]").forEach((element) => { element.textContent = String(new Date().getFullYear()); });
 		await hydrateProducts();
@@ -663,6 +1214,7 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 		}
 		updateCartIndicators();
 		updatePriceApprovalNotice();
+		updateAccountLinks();
 		initNavigation();
 		initFeaturedDishes();
 		initOffers();
@@ -670,6 +1222,8 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 		initProductDetails();
 		initCheckout();
 		initForms();
+		initAuth();
+		initAdmin();
 	}
 
 	boot();

@@ -194,14 +194,15 @@ router.post('/checkout', requireEtbPriceApproval(config), async (req, res) => {
         })),
       });
 
+      const provider = resolvePaymentProvider(config);
       await tx.payment.create({
         data: {
           orderId: createdOrder.id,
-          provider: 'DEVELOPMENT',
+          provider: provider === 'chapa' ? 'CHAPA' : provider === 'stripe' ? 'STRIPE' : 'DEVELOPMENT',
           status: 'PENDING',
           amount: total,
-          transactionId: `dev-${createdOrder.orderNumber}`,
-          paymentIntentId: `dev-intent-${createdOrder.orderNumber}`,
+          transactionId: provider === 'demo' ? `dev-${createdOrder.orderNumber}` : null,
+          paymentIntentId: provider === 'demo' ? `dev-intent-${createdOrder.orderNumber}` : null,
         },
       });
 
@@ -210,6 +211,55 @@ router.post('/checkout', requireEtbPriceApproval(config), async (req, res) => {
 
       return createdOrder;
     });
+
+    const provider = resolvePaymentProvider(config);
+    if (provider === 'chapa') {
+      const txRef = order.orderNumber;
+      const returnUrl = new URL('/checkout.html', config.clientUrl);
+      returnUrl.searchParams.set('status', 'success');
+      returnUrl.searchParams.set('order', order.orderNumber);
+
+      const paymentStatusToken = createOrderStatusToken(order.orderNumber, config.paymentStatusTokenSecret);
+      returnUrl.hash = `payment-token=${encodeURIComponent(paymentStatusToken)}`;
+
+      const { checkoutUrl } = await initializePaymentProvider({
+        prisma,
+        orderId: order.id,
+        provider: 'CHAPA',
+        initialize: async () => {
+          await prisma.payment.update({
+            where: { orderId: order.id },
+            data: { transactionId: txRef },
+          });
+          return initializeChapaTransaction({
+            secretKey: config.chapaSecretKey,
+            amount: total,
+            currency: config.chapaCurrency,
+            email: customerEmail,
+            customerName,
+            phone: customerPhone,
+            txRef,
+            returnUrl: returnUrl.toString(),
+            callbackUrl: config.chapaWebhookSecret
+              ? new URL('/api/orders/chapa/webhook', config.appBaseUrl).toString()
+              : undefined,
+          });
+        },
+      });
+
+      return res.status(201).json({
+        success: true,
+        paymentUrl: checkoutUrl,
+        order: {
+          id: order.id,
+          orderNumber: order.orderNumber,
+          status: order.status,
+          total: Number(order.total),
+          fulfillmentType: order.fulfillmentType,
+        },
+        message: 'Order created successfully. Redirecting to Chapa payment.',
+      });
+    }
 
     return res.status(201).json({
       success: true,

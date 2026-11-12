@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin Dashboard | Savora Express</title>
+  <meta name="description" content="Savora Express Administrator Console. Manage customer orders, menu pricing, and live payment configuration.">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="script.js"></script>
+</head>
+<body data-page="admin">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="container nav-wrap">
+      <a class="brand" href="index.html" aria-label="Savora Express home">
+        <span class="brand-mark" aria-hidden="true">S</span>
+        <span class="brand-name">Savora Express<small>Administrator Console</small></span>
+      </a>
+      <nav class="primary-nav" id="primary-nav" aria-label="Main navigation">
+        <a href="index.html">HOME</a>
+        <a href="menu.html">MENU</a>
+        <a href="checkout.html">ORDER</a>
+        <a href="admin.html" aria-current="page">ADMIN</a>
+      </nav>
+      <div class="nav-actions">
+        <span class="admin-badge-admin">ADMIN ACCESS</span>
+        <a class="icon-button account-link" href="login.html" aria-label="Account profile" title="Your Account">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M5 20c.7-3.6 3.1-5.5 7-5.5s6.3 1.9 7 5.5"></path></svg>
+        </a>
+        <button type="button" id="admin-logout-btn" class="button button-small button-outline" style="min-height:36px;padding:0 12px;font-size:11px;">Sign Out</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- Unauthorized Access State (hidden by default) -->
+    <section id="admin-auth-guard" class="section" hidden>
+      <div class="container" style="max-width:540px;text-align:center;">
+        <div class="demo-note" style="margin-bottom:24px;border-color:#ef4444;">
+          <span aria-hidden="true">🔒</span>
+          <div>
+            <strong>Administrator Access Required</strong>
+            <span>You must sign in with an administrator account to view the restaurant dashboard.</span>
+          </div>
+        </div>
+        <a href="login.html?redirect=admin" class="button" style="margin-top:12px;">Sign In to Admin Portal</a>
+      </div>
+    </section>
+
+    <!-- Authorized Admin Dashboard View -->
+    <section id="admin-dashboard-content" class="admin-section">
+      <div class="container">
+        <!-- Dashboard Header -->
+        <div class="admin-header">
+          <div class="admin-header-title">
+            <div class="breadcrumbs"><a href="index.html">Home</a> / Admin Console</div>
+            <h1>Restaurant Operations</h1>
+            <p id="admin-user-welcome">Loaded admin session.</p>
+          </div>
+          <div class="admin-header-actions">
+            <button type="button" id="btn-refresh-dashboard" class="button button-small button-outline">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"></path></svg>
+              Refresh Data
+            </button>
+          </div>
+        </div>
+
+        <!-- ETB Pricing & Live Chapa Configuration Banner -->
+        <div class="admin-config-banner">
+          <div>
+            <strong style="display:block;font-size:14px;margin-bottom:4px;color:var(--charcoal);">Live Payment &amp; ETB Pricing Status</strong>
+            <div class="admin-config-items">
+              <div class="admin-config-item">Provider: <span id="admin-payment-provider" class="status-pill success">Loading…</span></div>
+              <div class="admin-config-item">Environment: <span id="admin-payment-env">Loading…</span></div>
+              <div class="admin-config-item">Currency: <span id="admin-currency">ETB</span></div>
+              <div class="admin-config-item">ETB Price Approval: <span id="admin-price-approval" class="status-pill warning">Loading…</span></div>
+            </div>
+          </div>
+          <div>
+            <a href="menu.html" target="_blank" class="text-link" style="font-size:12px;">View Live Menu <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"></path></svg></a>
+          </div>
+        </div>
+
+        <!-- Summary Metric Cards -->
+        <div class="admin-stats-grid">
+          <div class="admin-stat-card">
+            <span class="stat-label">Total Orders</span>
+            <span class="stat-value" id="stat-total-orders">0</span>
+            <span class="stat-help">Lifetime restaurant orders</span>
+          </div>
+          <div class="admin-stat-card">
+            <span class="stat-label">Paid Revenue</span>
+            <span class="stat-value" id="stat-total-revenue">ETB 0.00</span>
+            <span class="stat-help">Confirmed online &amp; card payments</span>
+          </div>
+          <div class="admin-stat-card">
+            <span class="stat-label">Customer Accounts</span>
+            <span class="stat-value" id="stat-total-customers">0</span>
+            <span class="stat-help">Registered guests &amp; regulars</span>
+          </div>
+          <div class="admin-stat-card">
+            <span class="stat-label">Active Menu Items</span>
+            <span class="stat-value" id="stat-total-products">0</span>
+            <span class="stat-help">Catalog dishes ready to order</span>
+          </div>
+        </div>
+
+        <!-- Dashboard Navigation Tabs -->
+        <div class="admin-nav-tabs" role="tablist">
+          <button type="button" class="admin-nav-tab active" id="tab-btn-orders" role="tab" aria-selected="true">Customer Orders</button>
+          <button type="button" class="admin-nav-tab" id="tab-btn-menu" role="tab" aria-selected="false">Menu Catalog &amp; Dishes</button>
+        </div>
+
+        <!-- Tab 1: Orders Management -->
+        <div id="panel-orders">
+          <div class="section-heading" style="margin-bottom:16px;">
+            <div>
+              <h2 style="font-size:24px;">Customer Orders</h2>
+              <p>Monitor order status, fulfillment, and payment transactions.</p>
+            </div>
+          </div>
+          <div class="admin-table-wrap">
+            <table class="admin-table" id="orders-table">
+              <thead>
+                <tr>
+                  <th>Order #</th>
+                  <th>Date</th>
+                  <th>Customer</th>
+                  <th>Items</th>
+                  <th>Total</th>
+                  <th>Payment</th>
+                  <th>Fulfillment</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="orders-table-body">
+                <tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted);">Loading orders…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Tab 2: Menu Management (hidden by default) -->
+        <div id="panel-menu" hidden>
+          <div class="section-heading" style="margin-bottom:16px;">
+            <div>
+              <h2 style="font-size:24px;">Menu Catalog Management</h2>
+              <p>View seeded catalog dishes, update stock, and toggle dish availability.</p>
+            </div>
+            <button type="button" id="btn-toggle-add-dish" class="button button-small">+ Add New Dish</button>
+          </div>
+
+          <!-- Add New Dish Form (Collapsible) -->
+          <div id="add-dish-panel" class="form-panel" style="margin-bottom:28px;" hidden>
+            <h3 style="margin-top:0;font-size:18px;">Add New Dish to Catalog</h3>
+            <form id="add-dish-form" class="form-grid">
+              <div class="form-field">
+                <label for="dish-name">Dish Name</label>
+                <input id="dish-name" name="name" type="text" required placeholder="e.g. Savora Special Burger">
+              </div>
+              <div class="form-field">
+                <label for="dish-category">Category</label>
+                <select id="dish-category" name="categoryId" class="select-field" required>
+                  <option value="">Select a category</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="dish-price">Price (ETB)</label>
+                <input id="dish-price" name="price" type="number" step="0.01" min="1" required placeholder="e.g. 450.00">
+              </div>
+              <div class="form-field">
+                <label for="dish-stock">Initial Stock</label>
+                <input id="dish-stock" name="stock" type="number" min="0" value="50">
+              </div>
+              <div class="form-field form-field-full">
+                <label for="dish-description">Description</label>
+                <textarea id="dish-description" name="description" rows="2" placeholder="Ingredients and dish flavor notes"></textarea>
+              </div>
+              <div class="form-field form-field-full">
+                <label for="dish-image">Image URL</label>
+                <input id="dish-image" name="image" type="url" placeholder="https://images.unsplash.com/...">
+              </div>
+              <div class="form-field form-field-full" style="display:flex;gap:12px;margin-top:8px;">
+                <button type="submit" class="button button-small">Save Dish</button>
+                <button type="button" id="btn-cancel-add-dish" class="button button-small button-outline">Cancel</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Dishes Table -->
+          <div class="admin-table-wrap">
+            <table class="admin-table" id="dishes-table">
+              <thead>
+                <tr>
+                  <th>Dish</th>
+                  <th>Category</th>
+                  <th>Price</th>
+                  <th>Stock</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="dishes-table-body">
+                <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--muted);">Loading menu items…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-bottom">
+        <span>© <span data-year></span> Savora Express — Admin Management Console</span>
+        <span>Internal Operations</span>
+      </div>
+    </div>
+  </footer>
+  <div class="toast-region" role="status" aria-live="polite" aria-atomic="false"></div>
+</body>
+</html>
