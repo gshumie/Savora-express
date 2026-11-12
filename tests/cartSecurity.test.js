@@ -13,6 +13,8 @@ import {
   MissingCartIdentityError,
   orderRoutes,
 } from '../src/routes/orderRoutes.js';
+import { extractGuestSessionId } from '../src/lib/cartIdentity.js';
+import { extractAuthToken, createOptionalAuth } from '../src/middleware/auth.js';
 
 function routeHandler(router, path, method) {
   const layer = router.stack.find((entry) => (
@@ -274,4 +276,33 @@ test('rejects stored checkout quantities outside the range 1 through 99', async 
 test('caps an existing cart item at 99 when adding more quantity', () => {
   assert.equal(capCartQuantity(98, 5), 99);
   assert.equal(capCartQuantity(99, 1), 99);
+});
+
+test('extractGuestSessionId resolves from headers, body, query, and cookies', () => {
+  assert.equal(extractGuestSessionId({ headers: { 'x-session-id': 'sess-header' } }), 'sess-header');
+  assert.equal(extractGuestSessionId({ headers: { 'X-Session-Id': 'sess-cap-header' } }), 'sess-cap-header');
+  assert.equal(extractGuestSessionId({ body: { sessionId: 'sess-body' } }), 'sess-body');
+  assert.equal(extractGuestSessionId({ query: { sessionId: 'sess-query' } }), 'sess-query');
+  assert.equal(extractGuestSessionId({ headers: { cookie: 'savora_session_id=sess-cookie; other=1' } }), 'sess-cookie');
+  assert.equal(extractGuestSessionId({ headers: { cookie: 'session_id=sess-short-cookie' } }), 'sess-short-cookie');
+  assert.equal(extractGuestSessionId({ headers: {}, query: {} }), null);
+});
+
+test('extractAuthToken resolves from Authorization Bearer and savora_token cookie', () => {
+  assert.equal(extractAuthToken({ headers: { authorization: 'Bearer test-jwt-token' } }), 'test-jwt-token');
+  assert.equal(extractAuthToken({ headers: { cookie: 'savora_token=test-cookie-jwt' } }), 'test-cookie-jwt');
+  assert.equal(extractAuthToken({ headers: { cookie: 'token=test-short-jwt' } }), 'test-short-jwt');
+  assert.equal(extractAuthToken({ headers: {} }), null);
+});
+
+test('optionalAuth middleware leaves req.user null and continues for unauthenticated guest', async () => {
+  const optionalAuth = createOptionalAuth();
+  const req = { headers: {} };
+  const res = createResponse();
+  let nextCalled = false;
+  await optionalAuth(req, res, () => { nextCalled = true; });
+
+  assert.equal(nextCalled, true);
+  assert.equal(req.user, null);
+  assert.equal(res.statusCode, 200);
 });

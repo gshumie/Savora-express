@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../db/prisma.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, optionalAuth } from '../middleware/auth.js';
 import {
   calculateCartSubtotalMinorUnits,
   minorUnitsToDecimal,
@@ -10,9 +10,10 @@ import {
   applyApprovedEtbPrices,
   getApprovedEtbPrice,
 } from '../lib/approvedProductPricing.js';
-import { normalizeGuestSessionId } from '../lib/cartIdentity.js';
+import { extractGuestSessionId, normalizeGuestSessionId } from '../lib/cartIdentity.js';
 
 const router = Router();
+router.use(optionalAuth);
 
 export function capCartQuantity(currentQuantity, addedQuantity) {
   return Math.min(99, currentQuantity + addedQuantity);
@@ -131,8 +132,7 @@ async function prepareCartPayload(cart) {
 router.get('/', async (req, res) => {
   try {
     const tokenUser = req.user || null;
-    const sessionId = normalizeGuestSessionId(req.headers['x-session-id'])
-      || normalizeGuestSessionId(req.query.sessionId);
+    const sessionId = extractGuestSessionId(req);
     if (!tokenUser?.id && !sessionId) {
       return res.status(400).json({ error: 'A guest session identifier is required.' });
     }
@@ -151,7 +151,7 @@ router.post('/items', async (req, res) => {
     const { productId, quantity = 1, sessionId } = req.body || {};
     const userId = req.user?.id || null;
     const providedSessionId = normalizeGuestSessionId(sessionId)
-      || normalizeGuestSessionId(req.headers['x-session-id']);
+      || extractGuestSessionId(req);
 
     if (!userId && !providedSessionId) {
       return res.status(400).json({ error: 'A guest session identifier is required.' });
@@ -206,8 +206,7 @@ router.put('/items/:productId', async (req, res) => {
     const quantityValue = req.body?.quantity;
     const quantity = Number(quantityValue);
     const userId = req.user?.id || null;
-    const sessionId = normalizeGuestSessionId(req.headers['x-session-id'])
-      || normalizeGuestSessionId(req.body?.sessionId);
+    const sessionId = extractGuestSessionId(req);
 
     if (!userId && !sessionId) {
       return res.status(400).json({ error: 'A guest session identifier is required.' });
@@ -259,8 +258,7 @@ router.delete('/items/:productId', async (req, res) => {
   try {
     const { productId } = req.params;
     const userId = req.user?.id || null;
-    const sessionId = normalizeGuestSessionId(req.headers['x-session-id'])
-      || normalizeGuestSessionId(req.body?.sessionId);
+    const sessionId = extractGuestSessionId(req);
     if (!userId && !sessionId) {
       return res.status(400).json({ error: 'A guest session identifier is required.' });
     }
@@ -292,7 +290,7 @@ router.post('/replace', async (req, res) => {
     const { items, sessionId } = req.body || {};
     const userId = req.user?.id || null;
     const providedSessionId = normalizeGuestSessionId(sessionId)
-      || normalizeGuestSessionId(req.headers['x-session-id']);
+      || extractGuestSessionId(req);
 
     if (!providedSessionId && !userId) {
       return res.status(400).json({ error: 'A guest session identifier is required.' });
@@ -349,7 +347,8 @@ router.post('/replace', async (req, res) => {
 router.post('/sync', requireAuth, async (req, res) => {
   try {
     const { sessionId } = req.body || {};
-    const normalizedSessionId = normalizeGuestSessionId(sessionId);
+    const normalizedSessionId = normalizeGuestSessionId(sessionId)
+      || extractGuestSessionId(req);
     if (!normalizedSessionId) {
       return res.status(400).json({ error: 'Guest session identifier is required.' });
     }

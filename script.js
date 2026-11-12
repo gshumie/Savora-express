@@ -36,12 +36,21 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 	let removedCartItemsCount = 0;
 	let cart = {};
 
+	function getCookie(name) {
+		const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+		return match ? decodeURIComponent(match[1]) : null;
+	}
+
 	function getSessionId() {
-		let sessionId = localStorage.getItem(SESSION_KEY);
+		let sessionId = localStorage.getItem(SESSION_KEY)
+			|| localStorage.getItem("session_id")
+			|| getCookie("savora_session_id")
+			|| getCookie("session_id");
 		if (!sessionId) {
 			sessionId = window.crypto?.randomUUID?.() || `savora-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 			localStorage.setItem(SESSION_KEY, sessionId);
 		}
+		document.cookie = `savora_session_id=${sessionId}; path=/; max-age=2592000; SameSite=Lax`;
 		return sessionId;
 	}
 
@@ -430,6 +439,17 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 			paymentNote.innerHTML = `<strong>ETB pricing approval required</strong><span data-pricing-approval></span>`;
 			updatePriceApprovalNotice();
 		}
+		const user = getAuthUser();
+		if (user) {
+			const nameInput = document.querySelector("#checkout-name");
+			const emailInput = document.querySelector("#checkout-email");
+			if (nameInput && !nameInput.value && user.name) {
+				nameInput.value = user.name;
+			}
+			if (emailInput && !emailInput.value && user.email) {
+				emailInput.value = user.email;
+			}
+		}
 		const addressField = document.querySelector("#address-field");
 		const address = document.querySelector("#checkout-address");
 		const status = form.querySelector("[data-form-status]");
@@ -523,9 +543,10 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 				submitButton.disabled = true;
 				status.textContent = "Submitting your order…";
 				try {
+					const headers = getAuthHeaders({ "Content-Type": "application/json" });
 					const cartResponse = await fetch("/api/cart/replace", {
 						method: "POST",
-						headers: { "Content-Type": "application/json", "X-Session-Id": sessionId },
+						headers,
 						body: JSON.stringify({ sessionId, items: Object.entries(cart).map(([productId, quantity]) => ({ productId, quantity })) }),
 					});
 					const cartResult = await cartResponse.json();
@@ -533,7 +554,7 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 
 					const orderResponse = await fetch("/api/orders/checkout-session", {
 						method: "POST",
-						headers: { "Content-Type": "application/json", "X-Session-Id": sessionId },
+						headers,
 						body: JSON.stringify({
 							sessionId,
 							customerName: name,
@@ -655,12 +676,19 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 	const AUTH_USER_KEY = "savora-user";
 
 	function getAuthToken() {
-		return localStorage.getItem(AUTH_TOKEN_KEY);
+		return localStorage.getItem(AUTH_TOKEN_KEY)
+			|| localStorage.getItem("token")
+			|| localStorage.getItem("savora_token")
+			|| getCookie("savora_token")
+			|| null;
 	}
 
 	function getAuthUser() {
 		try {
-			return JSON.parse(localStorage.getItem(AUTH_USER_KEY) || "null");
+			const raw = localStorage.getItem(AUTH_USER_KEY)
+				|| localStorage.getItem("user")
+				|| localStorage.getItem("savora_user");
+			return raw ? JSON.parse(raw) : null;
 		} catch {
 			return null;
 		}
@@ -668,20 +696,42 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 
 	function setAuth(token, user) {
 		localStorage.setItem(AUTH_TOKEN_KEY, token);
+		localStorage.setItem("token", token);
+		localStorage.setItem("savora_token", token);
 		localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+		localStorage.setItem("user", JSON.stringify(user));
 		document.cookie = `savora_token=${token}; path=/; max-age=604800; SameSite=Lax`;
 		updateAccountLinks();
 	}
 
 	function clearAuth() {
 		localStorage.removeItem(AUTH_TOKEN_KEY);
+		localStorage.removeItem("token");
+		localStorage.removeItem("savora_token");
 		localStorage.removeItem(AUTH_USER_KEY);
+		localStorage.removeItem("user");
+		localStorage.removeItem("savora_user");
 		document.cookie = "savora_token=; path=/; max-age=0; SameSite=Lax";
 		updateAccountLinks();
 	}
 
+	function getAuthHeaders(extraHeaders = {}) {
+		const headers = { ...extraHeaders };
+		const token = getAuthToken();
+		if (token) {
+			headers["Authorization"] = `Bearer ${token}`;
+		}
+		const sessionId = getSessionId();
+		if (sessionId) {
+			headers["X-Session-Id"] = sessionId;
+		}
+		return headers;
+	}
+
 	function updateAccountLinks() {
 		const user = getAuthUser();
+		const isCheckout = document.body.dataset.page === "checkout";
+		const loginUrl = isCheckout ? "login.html?redirect=checkout" : "login.html";
 		document.querySelectorAll(".account-link").forEach((link) => {
 			if (user) {
 				if (user.role === "ADMIN") {
@@ -689,12 +739,12 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 					link.title = `Admin: ${user.name}`;
 					link.setAttribute("aria-label", "Admin Console");
 				} else {
-					link.href = "login.html";
+					link.href = loginUrl;
 					link.title = `Signed in as ${user.name}`;
 					link.setAttribute("aria-label", "Account Profile");
 				}
 			} else {
-				link.href = "login.html";
+				link.href = loginUrl;
 				link.title = "Sign in or create an account";
 				link.setAttribute("aria-label", "Sign in or create an account");
 			}
@@ -1204,6 +1254,7 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 
 	async function boot() {
 		document.querySelectorAll("[data-year]").forEach((element) => { element.textContent = String(new Date().getFullYear()); });
+		getSessionId();
 		await hydrateProducts();
 		await hydrateCheckoutConfig();
 		cart = loadCart();

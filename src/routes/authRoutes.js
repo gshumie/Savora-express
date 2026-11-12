@@ -3,7 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { config } from '../config.js';
 import { prisma } from '../db/prisma.js';
 import { comparePassword, generateToken, hashPassword, DUMMY_PASSWORD_HASH } from '../lib/auth.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, optionalAuth } from '../middleware/auth.js';
 import { applyApprovedEtbPrices } from '../lib/approvedProductPricing.js';
 import { createAuthSession, revokeAuthSession } from '../services/authSessions.js';
 import { normalizeIpAddress, resolveClientIp } from '../lib/clientIp.js';
@@ -223,6 +223,30 @@ export function createAuthRouter({
     } catch (error) {
       console.error('Profile error:', error);
       return res.status(500).json({ error: 'Unable to load profile.' });
+    }
+  });
+
+  router.get('/me', optionalAuth, async (req, res) => {
+    try {
+      if (!req.user?.id) {
+        return res.json({ user: null, authenticated: false });
+      }
+
+      const user = await database.user.findUnique({
+        where: { id: req.user.id },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          createdAt: true,
+        },
+      });
+
+      return res.json({ user, authenticated: Boolean(user) });
+    } catch (error) {
+      console.error('Auth me error:', error);
+      return res.json({ user: null, authenticated: false });
     }
   });
 

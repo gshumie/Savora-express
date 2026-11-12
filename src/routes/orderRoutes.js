@@ -18,9 +18,11 @@ import {
 } from '../services/chapa.js';
 import { createOrderStatusToken } from '../lib/orderStatusToken.js';
 import { initializePaymentProvider } from '../services/paymentInitialization.js';
-import { normalizeGuestSessionId } from '../lib/cartIdentity.js';
+import { extractGuestSessionId, normalizeGuestSessionId } from '../lib/cartIdentity.js';
+import { optionalAuth } from '../middleware/auth.js';
 
 const router = Router();
+router.use(optionalAuth);
 const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey) : null;
 
 function generateOrderNumber() {
@@ -143,8 +145,7 @@ router.post('/chapa/webhook', async (req, res) => {
 router.post('/checkout', requireEtbPriceApproval(config), async (req, res) => {
   try {
     const { customerName, customerEmail, customerPhone, fulfillment, notes, address, cartId } = req.body || {};
-    const sessionId = normalizeGuestSessionId(req.body?.sessionId)
-      || normalizeGuestSessionId(req.headers['x-session-id']);
+    const sessionId = extractGuestSessionId(req);
     const userId = req.user?.id || null;
 
     if (!userId && !sessionId) {
@@ -287,8 +288,7 @@ router.post('/checkout', requireEtbPriceApproval(config), async (req, res) => {
 router.post('/checkout-session', requireEtbPriceApproval(config), async (req, res) => {
   try {
     const { customerName, customerEmail, customerPhone, fulfillment, notes, address, cartId } = req.body || {};
-    const sessionId = normalizeGuestSessionId(req.body?.sessionId)
-      || normalizeGuestSessionId(req.headers['x-session-id']);
+    const sessionId = extractGuestSessionId(req);
     const userId = req.user?.id || null;
 
     if (!userId && !sessionId) {
