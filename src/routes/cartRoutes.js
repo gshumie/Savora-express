@@ -1,29 +1,48 @@
 import { Router } from 'express';
 import { prisma } from '../db/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import {
+  calculateCartSubtotalMinorUnits,
+  minorUnitsToDecimal,
+  toMinorUnits,
+} from '../lib/money.js';
+import {
+  applyApprovedEtbPrices,
+  getApprovedEtbPrice,
+} from '../lib/approvedProductPricing.js';
+import { normalizeGuestSessionId } from '../lib/cartIdentity.js';
 
 const router = Router();
 
-async function resolveCart(userId, sessionId) {
+export function capCartQuantity(currentQuantity, addedQuantity) {
+  return Math.min(99, currentQuantity + addedQuantity);
+}
+
+export async function resolveCart(userId, sessionId, database = prisma) {
+  const normalizedSessionId = normalizeGuestSessionId(sessionId);
+  if (!userId && !normalizedSessionId) {
+    return null;
+  }
+
   let cart = null;
 
   if (userId) {
-    cart = await prisma.shoppingCart.findFirst({
+    cart = await database.shoppingCart.findFirst({
       where: { userId },
       include: { items: { include: { product: true } } },
     });
   }
 
-  if (!cart) {
-    cart = await prisma.shoppingCart.findFirst({
-      where: sessionId ? { sessionId } : undefined,
+  if (!cart && !userId) {
+    cart = await database.shoppingCart.findFirst({
+      where: { sessionId: normalizedSessionId },
       include: { items: { include: { product: true } } },
     });
   }
 
   if (!cart) {
-    cart = await prisma.shoppingCart.create({
-      data: { userId, sessionId: sessionId || null },
+    cart = await database.shoppingCart.create({
+      data: { userId: userId || null, sessionId: userId ? null : normalizedSessionId },
       include: { items: { include: { product: true } } },
     });
   }
@@ -31,30 +50,80 @@ async function resolveCart(userId, sessionId) {
   return cart;
 }
 
+export async function incrementCartItemQuantity({
+  database = prisma,
+  cartId,
+  productId,
+  addedQuantity,
+  unitPrice,
+}) {
+  if (!Number.isInteger(addedQuantity) || addedQuantity < 1) {
+    throw new RangeError('Added cart quantity must be a positive integer.');
+  }
+
+  const quantityToAdd = Math.min(addedQuantity, 99);
+  const uniqueWhere = { cartId_productId: { cartId, productId } };
+
+  return database.$transaction(async (tx) => {
+    await tx.cartItem.upsert({
+      where: uniqueWhere,
+      update: { unitPrice },
+      create: { cartId, productId, quantity: 0, unitPrice },
+    });
+
+    const bulkIncrement = await tx.cartItem.updateMany({
+      where: {
+        cartId,
+        productId,
+        quantity: { lte: 99 - quantityToAdd },
+      },
+      data: { quantity: { increment: quantityToAdd }, unitPrice },
+    });
+
+    if (bulkIncrement.count === 0) {
+      for (let i = 0; i < quantityToAdd; i += 1) {
+        const increment = await tx.cartItem.updateMany({
+          where: { cartId, productId, quantity: { lt: 99 } },
+          data: { quantity: { increment: 1 }, unitPrice },
+        });
+        if (increment.count === 0) {
+          break;
+        }
+      }
+    }
+
+    return tx.cartItem.findUnique({ where: uniqueWhere });
+  });
+}
+
 async function prepareCartPayload(cart) {
-  let subtotal = 0;
-  const items = cart.items.map((item) => {
-    const unitPrice = Number(item.unitPrice ?? item.product.price ?? 0);
+  const approvedProducts = applyApprovedEtbPrices(cart.items.map((item) => item.product));
+  const items = cart.items.map((item, index) => {
+    const product = approvedProducts[index];
+    const unitPriceMinorUnits = toMinorUnits(product.price);
     const quantity = Number(item.quantity ?? 0);
-    subtotal += unitPrice * quantity;
+    const lineTotalMinorUnits = unitPriceMinorUnits * quantity;
 
     return {
-      id: item.product.id,
+      id: product.id,
       productId: item.productId,
-      name: item.product.name,
+      name: product.name,
       quantity,
-      unitPrice,
-      lineTotal: Number((unitPrice * quantity).toFixed(2)),
-      image: item.product.image,
+      unitPrice: Number(minorUnitsToDecimal(unitPriceMinorUnits)),
+      lineTotal: Number(minorUnitsToDecimal(lineTotalMinorUnits)),
+      image: product.image,
     };
   });
+  const subtotalMinorUnits = calculateCartSubtotalMinorUnits(
+    items.map((item) => ({ unitPrice: item.unitPrice, quantity: item.quantity })),
+  );
 
   return {
     id: cart.id,
     userId: cart.userId,
     sessionId: cart.sessionId,
     items,
-    subtotal: Number(subtotal.toFixed(2)),
+    subtotal: Number(minorUnitsToDecimal(subtotalMinorUnits)),
     count: items.reduce((sum, item) => sum + item.quantity, 0),
   };
 }
@@ -62,7 +131,11 @@ async function prepareCartPayload(cart) {
 router.get('/', async (req, res) => {
   try {
     const tokenUser = req.user || null;
-    const sessionId = req.headers['x-session-id'] || req.query.sessionId || 'guest-session';
+    const sessionId = normalizeGuestSessionId(req.headers['x-session-id'])
+      || normalizeGuestSessionId(req.query.sessionId);
+    if (!tokenUser?.id && !sessionId) {
+      return res.status(400).json({ error: 'A guest session identifier is required.' });
+    }
     const cart = await resolveCart(tokenUser?.id || null, tokenUser ? null : sessionId);
     const payload = await prepareCartPayload(cart);
 
@@ -77,8 +150,12 @@ router.post('/items', async (req, res) => {
   try {
     const { productId, quantity = 1, sessionId } = req.body || {};
     const userId = req.user?.id || null;
-    const providedSessionId = sessionId || req.headers['x-session-id'] || 'guest-session';
+    const providedSessionId = normalizeGuestSessionId(sessionId)
+      || normalizeGuestSessionId(req.headers['x-session-id']);
 
+    if (!userId && !providedSessionId) {
+      return res.status(400).json({ error: 'A guest session identifier is required.' });
+    }
     if (!productId) {
       return res.status(400).json({ error: 'Product ID is required.' });
     }
@@ -92,26 +169,14 @@ router.post('/items', async (req, res) => {
     if (!product || !product.isActive) {
       return res.status(404).json({ error: 'Product not found or unavailable.' });
     }
+    const approvedPrice = getApprovedEtbPrice(product);
 
     const cart = await resolveCart(userId, userId ? null : providedSessionId);
-
-    const item = await prisma.cartItem.upsert({
-      where: {
-        cartId_productId: {
-          cartId: cart.id,
-          productId: String(productId),
-        },
-      },
-      update: {
-        quantity: { increment: nextQuantity },
-        unitPrice: product.price,
-      },
-      create: {
-        cartId: cart.id,
-        productId: String(productId),
-        quantity: Math.min(nextQuantity, 99),
-        unitPrice: product.price,
-      },
+    const item = await incrementCartItemQuantity({
+      cartId: cart.id,
+      productId: String(productId),
+      addedQuantity: nextQuantity,
+      unitPrice: approvedPrice,
     });
 
     if (userId && cart.sessionId) {
@@ -141,8 +206,12 @@ router.put('/items/:productId', async (req, res) => {
     const quantityValue = req.body?.quantity;
     const quantity = Number(quantityValue);
     const userId = req.user?.id || null;
-    const sessionId = req.headers['x-session-id'] || req.body?.sessionId || 'guest-session';
+    const sessionId = normalizeGuestSessionId(req.headers['x-session-id'])
+      || normalizeGuestSessionId(req.body?.sessionId);
 
+    if (!userId && !sessionId) {
+      return res.status(400).json({ error: 'A guest session identifier is required.' });
+    }
     if (!productId) {
       return res.status(400).json({ error: 'Product ID is required.' });
     }
@@ -169,9 +238,14 @@ router.put('/items/:productId', async (req, res) => {
       return res.json({ success: true, removed: true });
     }
 
+    const product = await prisma.product.findUnique({ where: { id: productId } });
+    if (!product || !product.isActive) {
+      return res.status(404).json({ error: 'Product not found or unavailable.' });
+    }
+    const approvedPrice = getApprovedEtbPrice(product);
     const updated = await prisma.cartItem.update({
       where: { id: existing.id },
-      data: { quantity: Math.min(quantity, 99) },
+      data: { quantity: Math.min(quantity, 99), unitPrice: approvedPrice },
     });
 
     return res.json({ success: true, item: updated });
@@ -185,7 +259,11 @@ router.delete('/items/:productId', async (req, res) => {
   try {
     const { productId } = req.params;
     const userId = req.user?.id || null;
-    const sessionId = req.headers['x-session-id'] || req.body?.sessionId || 'guest-session';
+    const sessionId = normalizeGuestSessionId(req.headers['x-session-id'])
+      || normalizeGuestSessionId(req.body?.sessionId);
+    if (!userId && !sessionId) {
+      return res.status(400).json({ error: 'A guest session identifier is required.' });
+    }
     const cart = await resolveCart(userId, userId ? null : sessionId);
 
     const existing = await prisma.cartItem.findUnique({
@@ -213,7 +291,8 @@ router.post('/replace', async (req, res) => {
   try {
     const { items, sessionId } = req.body || {};
     const userId = req.user?.id || null;
-    const providedSessionId = sessionId || req.headers['x-session-id'];
+    const providedSessionId = normalizeGuestSessionId(sessionId)
+      || normalizeGuestSessionId(req.headers['x-session-id']);
 
     if (!providedSessionId && !userId) {
       return res.status(400).json({ error: 'A guest session identifier is required.' });
@@ -232,13 +311,15 @@ router.post('/replace', async (req, res) => {
 
     const products = await prisma.product.findMany({
       where: { id: { in: normalizedItems.map((item) => item.productId) }, isActive: true },
-      select: { id: true, price: true },
+      select: { id: true, slug: true },
     });
     if (products.length !== normalizedItems.length) {
       return res.status(400).json({ error: 'One or more cart products are unavailable.' });
     }
 
-    const productById = new Map(products.map((product) => [product.id, product]));
+    const productById = new Map(
+      applyApprovedEtbPrices(products).map((product) => [product.id, product]),
+    );
     const cart = await resolveCart(userId, userId ? null : providedSessionId);
     await prisma.$transaction(async (tx) => {
       await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
@@ -268,15 +349,23 @@ router.post('/replace', async (req, res) => {
 router.post('/sync', requireAuth, async (req, res) => {
   try {
     const { sessionId } = req.body || {};
-    if (!sessionId) {
+    const normalizedSessionId = normalizeGuestSessionId(sessionId);
+    if (!normalizedSessionId) {
       return res.status(400).json({ error: 'Guest session identifier is required.' });
     }
 
-    const guestCart = await prisma.shoppingCart.findFirst({ where: { sessionId }, include: { items: true } });
+    const guestCart = await prisma.shoppingCart.findFirst({
+      where: { sessionId: normalizedSessionId },
+      include: { items: { include: { product: true } } },
+    });
     if (!guestCart || guestCart.items.length === 0) {
       return res.json({ success: true, merged: 0 });
     }
 
+    const approvedProducts = applyApprovedEtbPrices(guestCart.items.map((item) => item.product));
+    const approvedPriceByProductId = new Map(
+      approvedProducts.map((product) => [product.id, product.price]),
+    );
     let userCart = await prisma.shoppingCart.findFirst({ where: { userId: req.user.id } });
     if (!userCart) {
       userCart = await prisma.shoppingCart.create({ data: { userId: req.user.id } });
@@ -290,12 +379,12 @@ router.post('/sync', requireAuth, async (req, res) => {
             productId: item.productId,
           },
         },
-        update: { quantity: item.quantity, unitPrice: item.unitPrice },
+        update: { quantity: item.quantity, unitPrice: approvedPriceByProductId.get(item.productId) },
         create: {
           cartId: userCart.id,
           productId: item.productId,
           quantity: item.quantity,
-          unitPrice: item.unitPrice,
+          unitPrice: approvedPriceByProductId.get(item.productId),
         },
       });
     }

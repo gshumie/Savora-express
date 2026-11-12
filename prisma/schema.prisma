@@ -1,10 +1,12 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum UserRole {
@@ -43,9 +45,23 @@ model User {
   updatedAt    DateTime @updatedAt
 
   carts        ShoppingCart[]
+  authSessions AuthSession[]
   orders       Order[]
   reviews      Review[]
   addresses    Address[]
+}
+
+model AuthSession {
+  id        String    @id @default(uuid())
+  userId    String
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
 }
 
 model Category {
@@ -65,6 +81,7 @@ model Product {
   categoryId    String
   description   String
   image         String
+  /// Approved product prices are denominated in ETB.
   price         Decimal     @db.Decimal(10,2)
   originalPrice Decimal?    @db.Decimal(10,2)
   badge         String?

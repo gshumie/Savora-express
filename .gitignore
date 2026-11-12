@@ -35,3 +35,4 @@ temp/
 *.db
 secrets/
 credentials/
+.vercel

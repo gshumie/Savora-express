@@ -1,42 +1,40 @@
+import {
+	CURRENCY,
+	calculateCartSubtotalMinorUnits,
+	calculateCheckoutTotals,
+	formatMinorUnits,
+	toMinorUnits,
+} from "./money.js";
+import { APPROVED_ETB_PRICES } from "./approvedPrices.js";
+import { normalizePersistedCart, serializePersistedCart } from "./cartPersistence.js";
+
 (() => {
 	"use strict";
-
 	const CART_KEY = "savora-express-demo-cart-v1";
 	const SESSION_KEY = "savora-express-session-v1";
-	const TAX_RATE = 0.08;
-	const DELIVERY_FEE = 3.99;
-	const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 	const photo = (id, width = 900) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&q=82`;
 	const reliableDrinkImage = photo("photo-1544145945-f90425340c7e");
 	const fallbackProducts = [
-		{ id: "margherita", name: "Garden Margherita", category: "Pizza", price: 15.5, rating: 4.9, reviews: 218, popularity: 98, badge: "Guest favorite", description: "San Marzano tomato, fresh mozzarella, basil, and a drizzle of olive oil.", image: photo("photo-1579751626657-72bc17010498") },
-		{ id: "spicy-salami", name: "Calabrian Heat", category: "Pizza", price: 18, rating: 4.8, reviews: 174, popularity: 91, badge: "A little spicy", description: "Pepperoni, roasted peppers, hot honey, and whipped ricotta.", image: photo("photo-1628840042765-356cda07504e") },
-		{ id: "mushroom-pizza", name: "Wild Mushroom", category: "Pizza", price: 17.5, rating: 4.7, reviews: 93, popularity: 74, description: "Roasted mushrooms, thyme, fontina, and a garlic cream base.", image: photo("photo-1571407970349-bc81e7e96d47") },
-		{ id: "savora-burger", name: "The Savora Stack", category: "Burgers", price: 16, rating: 4.9, reviews: 304, popularity: 100, badge: "Best seller", description: "Two smash patties, sharp cheddar, house pickles, and Savora sauce.", image: photo("photo-1568901346375-23c9450c58cd") },
-		{ id: "crispy-chicken", name: "Crispy Chicken Sando", category: "Burgers", price: 15, rating: 4.8, reviews: 182, popularity: 89, description: "Buttermilk-fried chicken, crunchy slaw, and bright lemon mayo.", image: photo("photo-1606755962773-d324e0a13086") },
-		{ id: "mushroom-burger", name: "Portobello Melt", category: "Burgers", price: 14.5, rating: 4.6, reviews: 77, popularity: 68, description: "Grilled portobello, smoked provolone, onion jam, and baby greens.", image: photo("photo-1553979459-d2229ba7433a") },
-		{ id: "pappardelle", name: "Sunday Pappardelle", category: "Pasta", price: 19, rating: 4.9, reviews: 167, popularity: 94, badge: "Slow cooked", description: "Wide ribbons, slow-braised beef ragu, parmesan, and fresh herbs.", image: photo("photo-1551183053-bf91a1d81141") },
-		{ id: "lemon-pasta", name: "Lemon Ricotta Rigatoni", category: "Pasta", price: 17, rating: 4.7, reviews: 116, popularity: 81, description: "Silky ricotta, lemon zest, baby spinach, and cracked pepper.", image: photo("photo-1473093295043-cdd812d0e601") },
-		{ id: "pesto-pasta", name: "Basil Pesto Linguine", category: "Pasta", price: 16.5, rating: 4.6, reviews: 84, popularity: 73, description: "House basil pesto, toasted pine nuts, parmesan, and cherry tomato.", image: photo("photo-1473093295043-cdd812d0e601") },
-		{ id: "roast-chicken", name: "Herb-Roasted Chicken", category: "Chicken", price: 20, rating: 4.8, reviews: 141, popularity: 86, badge: "Kitchen pick", description: "Lemon-herb chicken, crispy potatoes, and pan jus.", image: photo("photo-1532550907401-a500c9a57435") },
-		{ id: "chicken-wings", name: "Sticky Citrus Wings", category: "Chicken", price: 14, rating: 4.7, reviews: 159, popularity: 88, description: "Slow-roasted wings glazed with orange, ginger, and a gentle chili.", image: photo("photo-1527477396000-e27163b481c2") },
-		{ id: "chicken-bowl", name: "Green Market Chicken Bowl", category: "Chicken", price: 16, rating: 4.6, reviews: 71, popularity: 70, description: "Grilled chicken, grains, crisp vegetables, and herby yogurt.", image: photo("photo-1512621776951-a57141f2eefd") },
-		{ id: "family-feast", name: "Savora Sharing Feast", category: "Traditional Food", price: 38, rating: 4.9, reviews: 126, popularity: 92, badge: "15% off today", description: "A generous table spread with roasted chicken, spiced rice, salad, and warm flatbread.", image: photo("photo-1547592180-85f173990554"), originalPrice: 44.7 },
-		{ id: "shawarma-plate", name: "Market Shawarma Plate", category: "Traditional Food", price: 18.5, rating: 4.8, reviews: 102, popularity: 84, description: "Warm spices, grilled meat, fragrant rice, chopped salad, and tahini.", image: photo("photo-1547592180-85f173990554") },
-		{ id: "lentil-stew", name: "Slow-Simmered Lentils", category: "Traditional Food", price: 14, rating: 4.7, reviews: 65, popularity: 65, description: "Comforting lentils, tomato, warming spices, and a spoon of yogurt.", image: photo("photo-1547592180-85f173990554") },
-		{ id: "tiramisu", name: "House Tiramisu", category: "Desserts", price: 8.5, rating: 4.9, reviews: 196, popularity: 93, badge: "Made in-house", description: "Espresso-soaked layers, mascarpone cream, and cocoa.", image: photo("photo-1571877227200-a0d98ea607e9") },
-		{ id: "chocolate-cake", name: "Warm Chocolate Cake", category: "Desserts", price: 9, rating: 4.8, reviews: 147, popularity: 87, description: "Rich dark chocolate cake, vanilla cream, and seasonal berries.", image: photo("photo-1578985545062-69928b1d9587") },
-		{ id: "berry-cheesecake", name: "Market Berry Cheesecake", category: "Desserts", price: 8.5, rating: 4.7, reviews: 81, popularity: 72, description: "Creamy baked cheesecake with a bright mixed-berry compote.", image: photo("photo-1533134242443-d4fd215305ad") },
-		{ id: "house-lemonade", name: "Fresh Mint Lemonade", category: "Drinks", price: 5, rating: 4.8, reviews: 112, popularity: 80, description: "Fresh-squeezed lemon, garden mint, and just enough sweetness.", image: reliableDrinkImage },
-		{ id: "iced-tea", name: "Peach Garden Iced Tea", category: "Drinks", price: 4.5, rating: 4.6, reviews: 58, popularity: 62, description: "Black tea steeped strong and finished with ripe peach.", image: photo("photo-1499638309848-e9968540da83") },
-		{ id: "sparkling-water", name: "Citrus Sparkling Water", category: "Drinks", price: 3.5, rating: 4.5, reviews: 42, popularity: 57, description: "Chilled sparkling water with a squeeze of fresh citrus.", image: reliableDrinkImage },
-		{ id: "weeknight-pairing", name: "The Weeknight Pairing", category: "Traditional Food", price: 25, originalPrice: 31.5, rating: 4.8, reviews: 88, popularity: 78, badge: "Daily special", description: "Two market plates with a shared salad and fresh mint lemonade.", image: photo("photo-1547592180-85f173990554") },
-		{ id: "seasonal-pasta", name: "Seasonal Garden Pasta", category: "Pasta", price: 15.5, originalPrice: 18, rating: 4.7, reviews: 54, popularity: 75, badge: "Seasonal", description: "Fresh pasta with market greens, sweet peas, lemon, and parmesan.", image: photo("photo-1473093295043-cdd812d0e601") }
+		{ id: "garden-margherita", slug: "garden-margherita", name: "Garden Margherita", category: "Pizza", price: APPROVED_ETB_PRICES["garden-margherita"], rating: 4.9, reviews: 218, popularity: 98, badge: "Guest favorite", description: "San Marzano tomato, fresh mozzarella, basil, and a drizzle of olive oil.", image: photo("photo-1579751626657-72bc17010498") },
+		{ id: "calabrian-heat", slug: "calabrian-heat", name: "Calabrian Heat", category: "Pizza", price: APPROVED_ETB_PRICES["calabrian-heat"], rating: 4.8, reviews: 174, popularity: 91, badge: "A little spicy", description: "Pepperoni, roasted peppers, hot honey, and whipped ricotta.", image: photo("photo-1628840042765-356cda07504e") },
+		{ id: "the-savora-stack", slug: "the-savora-stack", name: "The Savora Stack", category: "Burgers", price: APPROVED_ETB_PRICES["the-savora-stack"], rating: 4.9, reviews: 304, popularity: 100, badge: "Best seller", description: "Two smash patties, sharp cheddar, house pickles, and Savora sauce.", image: photo("photo-1568901346375-23c9450c58cd") },
+		{ id: "smoky-bbq-chicken-burger", slug: "smoky-bbq-chicken-burger", name: "Smoky BBQ Chicken Burger", category: "Burgers", price: APPROVED_ETB_PRICES["smoky-bbq-chicken-burger"], rating: 4.7, reviews: 126, popularity: 86, description: "Grilled chicken, smoked barbecue glaze, crunchy slaw, and pepper jack cheese.", image: photo("photo-1606755962773-d324e0a13086") },
+		{ id: "sunday-pappardelle", slug: "sunday-pappardelle", name: "Sunday Pappardelle", category: "Pasta", price: APPROVED_ETB_PRICES["sunday-pappardelle"], rating: 4.9, reviews: 167, popularity: 94, badge: "Slow cooked", description: "Wide ribbons, slow-braised beef ragu, parmesan, and fresh herbs.", image: photo("photo-1551183053-bf91a1d81141") },
+		{ id: "creamy-tuscan-chicken-pasta", slug: "creamy-tuscan-chicken-pasta", name: "Creamy Tuscan Chicken Pasta", category: "Pasta", price: APPROVED_ETB_PRICES["creamy-tuscan-chicken-pasta"], rating: 4.8, reviews: 143, popularity: 89, description: "Penne with grilled chicken, sun-dried tomatoes, baby spinach, and parmesan cream sauce.", image: photo("photo-1473093295043-cdd812d0e601") },
+		{ id: "crispy-buttermilk-chicken", slug: "crispy-buttermilk-chicken", name: "Crispy Buttermilk Chicken", category: "Chicken", price: APPROVED_ETB_PRICES["crispy-buttermilk-chicken"], rating: 4.8, reviews: 188, popularity: 92, badge: "Crispy favorite", description: "Buttermilk-marinated chicken tenders with seasoned fries and house dipping sauce.", image: photo("photo-1562967914-608f82629710") },
+		{ id: "lemon-herb-roast-chicken", slug: "lemon-herb-roast-chicken", name: "Lemon Herb Roast Chicken", category: "Chicken", price: APPROVED_ETB_PRICES["lemon-herb-roast-chicken"], rating: 4.7, reviews: 96, popularity: 78, description: "Juicy roasted chicken with lemon, garlic, garden herbs, and seasonal vegetables.", image: photo("photo-1532550907401-a500c9a57435") },
+		{ id: "fresh-mint-lemonade", slug: "fresh-mint-lemonade", name: "Fresh Mint Lemonade", category: "Drinks", price: APPROVED_ETB_PRICES["fresh-mint-lemonade"], rating: 4.8, reviews: 112, popularity: 80, description: "Fresh-squeezed lemon, garden mint, and just enough sweetness.", image: reliableDrinkImage },
+		{ id: "strawberry-basil-cooler", slug: "strawberry-basil-cooler", name: "Strawberry Basil Cooler", category: "Drinks", price: APPROVED_ETB_PRICES["strawberry-basil-cooler"], rating: 4.7, reviews: 74, popularity: 70, description: "Ripe strawberries, fresh basil, sparkling water, and lime.", image: photo("photo-1556679343-c7306c1976bc") },
+		{ id: "house-tiramisu", slug: "house-tiramisu", name: "House Tiramisu", category: "Desserts", price: APPROVED_ETB_PRICES["house-tiramisu"], rating: 4.9, reviews: 196, popularity: 93, badge: "Made in-house", description: "Espresso-soaked layers, mascarpone cream, and cocoa.", image: photo("photo-1571877227200-a0d98ea607e9") },
+		{ id: "warm-chocolate-brownie", slug: "warm-chocolate-brownie", name: "Warm Chocolate Brownie", category: "Desserts", price: APPROVED_ETB_PRICES["warm-chocolate-brownie"], rating: 4.8, reviews: 138, popularity: 85, description: "A rich, fudgy chocolate brownie served warm with vanilla bean ice cream.", image: photo("photo-1606313564200-e75d5e30476c") }
 	];
 
 	let products = [...fallbackProducts];
 	let backendAvailable = false;
-	let cart = loadCart();
+	let etbPricesApproved = false;
+	let paymentMethodLabel = "Payment method unavailable";
+	let removedCartItemsCount = 0;
+	let cart = {};
 
 	function getSessionId() {
 		let sessionId = localStorage.getItem(SESSION_KEY);
@@ -71,21 +69,56 @@
 				}));
 				return;
 			}
+
 		} catch (error) {
 			console.warn("Backend menu API unavailable, using local static catalog.", error);
 		}
 		products = [...fallbackProducts];
 	}
 
+	async function hydrateCheckoutConfig() {
+		try {
+			const response = await fetch("/api/checkout-config", { cache: "no-store" });
+			if (!response.ok) throw new Error(`Checkout configuration returned ${response.status}`);
+			const payload = await response.json();
+			const supportedProviders = ["chapa", "stripe", "demo", "unavailable"];
+			const supportedEnvironments = ["test", "live"];
+			if (
+				payload?.currency !== CURRENCY
+				|| typeof payload?.pricesApproved !== "boolean"
+				|| !supportedProviders.includes(payload?.paymentProvider)
+				|| (payload.paymentProvider === "unavailable"
+					? payload.paymentEnvironment !== null
+					: !supportedEnvironments.includes(payload.paymentEnvironment))
+			) {
+				throw new Error("Checkout configuration is invalid.");
+			}
+			etbPricesApproved = payload.pricesApproved;
+			if (payload.paymentProvider === "unavailable") {
+				paymentMethodLabel = "Payment method unavailable";
+			} else if (payload.paymentProvider === "demo") {
+				paymentMethodLabel = "Demo (Test Mode)";
+			} else {
+				const name = payload.paymentProvider === "chapa" ? "Chapa" : "Stripe";
+				const mode = payload.paymentEnvironment === "test" ? "Test Mode" : "Live Mode";
+				paymentMethodLabel = `${name} (${mode})`;
+			}
+		} catch (error) {
+			console.error("Could not load price approval status; checkout remains disabled.", error);
+			etbPricesApproved = false;
+			paymentMethodLabel = "Payment method unavailable";
+		}
+		document.querySelectorAll("[data-payment-method]").forEach((element) => {
+			element.textContent = paymentMethodLabel;
+		});
+	}
+
 	function loadCart() {
 		try {
 			const saved = JSON.parse(localStorage.getItem(CART_KEY) || "{}");
-			if (!saved || typeof saved !== "object" || Array.isArray(saved)) {
-				console.warn("Cart data is missing or malformed. Resetting to an empty cart.");
-				return {};
-			}
-			const normalized = Object.fromEntries(Object.entries(saved).filter(([id, quantity]) => products.some((item) => item.id === id) && Number.isInteger(quantity) && quantity > 0 && quantity <= 99));
-			return normalized;
+			const normalized = normalizePersistedCart(saved, products);
+			removedCartItemsCount += normalized.removedCount;
+			return normalized.cart;
 		} catch (error) {
 			console.error("Unable to read the Savora cart from LocalStorage:", error);
 			return {};
@@ -94,7 +127,7 @@
 
 	function saveCart() {
 		try {
-			localStorage.setItem(CART_KEY, JSON.stringify(cart));
+			localStorage.setItem(CART_KEY, JSON.stringify(serializePersistedCart(cart, products)));
 		} catch (error) {
 			console.error("Cart could not be saved to LocalStorage:", error);
 			showToast("Cart works for this visit, but browser storage is unavailable.", true);
@@ -102,15 +135,48 @@
 	}
 
 	function money(value) {
-		return currency.format(value);
+		return formatMinorUnits(toMinorUnits(value));
+	}
+
+	function moneyMinorUnits(value) {
+		return formatMinorUnits(value);
 	}
 
 	function getItems() {
 		return Object.entries(cart).map(([id, quantity]) => ({ product: products.find((item) => item.id === id), quantity })).filter((item) => item.product);
 	}
 
-	function subtotal() {
-		return getItems().reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+	function subtotalMinorUnits() {
+		return calculateCartSubtotalMinorUnits(
+			getItems().map(({ product, quantity }) => ({ unitPrice: product.price, quantity })),
+		);
+	}
+
+	function updatePriceApprovalNotice() {
+		const message = etbPricesApproved
+			? "Prices are shown in Ethiopian Birr (ETB) and are approved for checkout."
+			: "Prices are shown in Ethiopian Birr (ETB), but the existing numeric amounts still need owner approval. Checkout is disabled.";
+		document.querySelectorAll("[data-pricing-approval]").forEach((element) => {
+			element.textContent = message;
+		});
+		const submitButton = document.querySelector("#place-demo-order");
+		if (submitButton) submitButton.disabled = !etbPricesApproved;
+	}
+
+	function getPaymentStatusToken(orderNumber) {
+		const fragmentToken = new URLSearchParams(window.location.hash.slice(1)).get("payment-token");
+		const storageKey = `savora-payment-status:${orderNumber}`;
+		let token = fragmentToken;
+		try {
+			if (token) sessionStorage.setItem(storageKey, token);
+			else token = sessionStorage.getItem(storageKey);
+		} catch {
+			console.warn("Secure payment-status access could not be kept for a page refresh.");
+		}
+		if (fragmentToken) {
+			window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+		}
+		return token;
 	}
 
 	function itemCount() {
@@ -167,7 +233,7 @@
 
 	function dishCard(product) {
 		const rating = `${product.rating.toFixed(1)} <span>(${product.reviews} demo reviews)</span>`;
-		return `<article class="dish-card"><div class="dish-image-wrap"><img src="${product.image}" alt="${product.name}" loading="lazy">${product.badge ? `<span class="dish-badge">${product.badge}</span>` : ""}</div><div class="dish-body"><div class="dish-title-row"><h3>${product.name}</h3><span class="dish-price">${money(product.price)}</span></div><p class="dish-description">${product.description}</p><div class="dish-meta"><span class="dish-rating" aria-label="Rated ${product.rating} out of 5, ${product.reviews} demo reviews">★ ${rating}</span><button class="button button-small" type="button" data-add="${product.id}" aria-label="Add ${product.name} to cart">Add <span aria-hidden="true">+</span></button></div></div></article>`;
+		return `<article class="dish-card"><div class="dish-image-wrap"><img src="${product.image}" alt="${product.name}" loading="lazy">${product.badge ? `<span class="dish-badge">${product.badge}</span>` : ""}</div><div class="dish-body"><div class="dish-title-row"><h3>${product.name}</h3><span class="dish-price">${money(product.price)}</span></div><p class="dish-description">${product.description}</p><div class="dish-meta"><span class="dish-rating" aria-label="Rated ${product.rating} out of 5, ${product.reviews} demo reviews">★ ${rating}</span><div class="dish-actions"><a class="text-link" href="product.html?slug=${encodeURIComponent(product.slug)}" aria-label="View details for ${product.name}">Details</a><button class="button button-small" type="button" data-add="${product.id}" aria-label="Add ${product.name} to cart">Add <span aria-hidden="true">+</span></button></div></div></div></article>`;
 	}
 
 	function initMenu() {
@@ -189,7 +255,7 @@
 			if (sort.value === "price-desc") visible.sort((a, b) => b.price - a.price);
 			if (sort.value === "popular") visible.sort((a, b) => b.popularity - a.popularity);
 			const result = document.querySelector("#menu-result");
-			result.textContent = `${visible.length} ${visible.length === 1 ? "dish" : "dishes"}${selectedCategory === "All" ? "" : ` in ${selectedCategory}`} · USD`;
+			result.textContent = `${visible.length} ${visible.length === 1 ? "dish" : "dishes"}${selectedCategory === "All" ? "" : ` in ${selectedCategory}`} · Prices in ${CURRENCY}`;
 			grid.innerHTML = visible.length ? visible.map(dishCard).join("") : `<div class="empty-state"><strong>No dishes found just yet.</strong>Try another search or choose a different category.</div>`;
 		}
 
@@ -205,13 +271,87 @@
 		render();
 	}
 
+	function initProductDetails() {
+		const target = document.querySelector("#product-detail");
+		if (!target) return;
+
+		const slug = new URLSearchParams(window.location.search).get("slug");
+		const product = products.find((item) => item.slug === slug);
+		if (!product) {
+			const emptyState = document.createElement("div");
+			emptyState.className = "empty-state product-detail-empty";
+			const heading = document.createElement("strong");
+			heading.textContent = "We couldn't find that dish.";
+			const message = document.createTextNode(" Browse the menu to find another favorite. ");
+			const menuLink = document.createElement("a");
+			menuLink.className = "button button-small";
+			menuLink.href = "menu.html";
+			menuLink.textContent = "Browse the menu";
+			emptyState.append(heading, message, menuLink);
+			target.replaceChildren(emptyState);
+			return;
+		}
+
+		document.title = `${product.name} | Savora Express`;
+		document.querySelector("#product-category").textContent = product.category;
+		document.querySelector("#product-breadcrumb").textContent = product.name;
+		document.querySelector('meta[name="description"]').content = `${product.name}: ${product.description} Price shown in ETB. Checkout requires price approval.`;
+
+		const article = document.createElement("article");
+		article.className = "product-detail";
+		const imageWrap = document.createElement("div");
+		imageWrap.className = "product-detail-image";
+		const image = document.createElement("img");
+		image.src = product.image;
+		image.alt = product.name;
+		image.fetchPriority = "high";
+		imageWrap.append(image);
+
+		const copy = document.createElement("div");
+		copy.className = "product-detail-copy";
+		const category = document.createElement("p");
+		category.className = "eyebrow";
+		category.textContent = product.category;
+		const heading = document.createElement("h1");
+		heading.textContent = product.name;
+		const description = document.createElement("p");
+		description.className = "product-detail-description";
+		description.textContent = product.description;
+		const price = document.createElement("strong");
+		price.className = "product-detail-price";
+		price.textContent = money(product.price);
+
+		const actions = document.createElement("div");
+		actions.className = "product-detail-actions";
+		const addButton = document.createElement("button");
+		addButton.className = "button";
+		addButton.type = "button";
+		addButton.dataset.add = product.id;
+		addButton.setAttribute("aria-label", `Add ${product.name} to cart`);
+		addButton.textContent = "Add to cart";
+		const cartLink = document.createElement("a");
+		cartLink.className = "button button-outline";
+		cartLink.href = "checkout.html";
+		cartLink.textContent = "View cart";
+		actions.append(addButton, cartLink);
+
+		const note = document.createElement("p");
+		note.className = "product-detail-note";
+		note.textContent = etbPricesApproved
+			? "Prices are shown in ETB and are approved for checkout."
+			: "Prices are shown in ETB. Checkout remains disabled until price approval is enabled.";
+		copy.append(category, heading, description, price, actions, note);
+		article.append(imageWrap, copy);
+		target.replaceChildren(article);
+	}
+
 	function initFeaturedDishes() {
 		const target = document.querySelector("#featured-dishes");
 		if (!target) return;
 		[
-			{ id: "savora-burger", slug: "the-savora-stack" },
-			{ id: "margherita", slug: "garden-margherita" },
-			{ id: "pappardelle", slug: "sunday-pappardelle" },
+			{ id: "the-savora-stack", slug: "the-savora-stack" },
+			{ id: "garden-margherita", slug: "garden-margherita" },
+			{ id: "sunday-pappardelle", slug: "sunday-pappardelle" },
 		].forEach(({ id, slug }) => {
 			const product = products.find((item) => item.id === id || item.slug === slug);
 			if (product) target.insertAdjacentHTML("beforeend", dishCard(product));
@@ -228,9 +368,9 @@
 				{ slug: "sunday-pappardelle", label: "House favorite", title: "Sunday Pappardelle" },
 			]
 			: [
-				{ id: "family-feast", label: "Gathering favorite", title: "The Savora Sharing Feast" },
-				{ id: "weeknight-pairing", label: "Today only", title: "The Weeknight Pairing" },
-				{ id: "seasonal-pasta", label: "In season", title: "Seasonal Garden Pasta" },
+				{ id: "the-savora-stack", label: "Guest favorite", title: "The Savora Stack" },
+				{ id: "garden-margherita", label: "Pizza night", title: "Garden Margherita" },
+				{ id: "sunday-pappardelle", label: "House favorite", title: "Sunday Pappardelle" },
 			];
 		target.innerHTML = offers.map(({ id, slug, label, title }) => {
 			const product = products.find((item) => item.id === id || item.slug === slug);
@@ -251,16 +391,17 @@
 		emptyState.hidden = !isEmpty;
 		if (isEmpty) return;
 
-		itemsRegion.innerHTML = items.map(({ product, quantity }) => `<div class="summary-item"><div><strong>${product.name}</strong><small>${money(product.price)} each</small><div class="quantity-controls"><button class="icon-button" type="button" data-cart-action="decrease" data-id="${product.id}" aria-label="Decrease ${product.name} quantity">−</button><span aria-live="polite">${quantity}</span><button class="icon-button" type="button" data-cart-action="increase" data-id="${product.id}" aria-label="Increase ${product.name} quantity">+</button><button class="text-link" type="button" data-cart-action="remove" data-id="${product.id}" aria-label="Remove ${product.name}" style="border:0;background:none;cursor:pointer">Remove</button></div></div><strong>${money(product.price * quantity)}</strong></div>`).join("");
-		const amount = subtotal();
-		const pickup = document.querySelector("input[name='fulfillment'][value='pickup']")?.checked || false;
-		const delivery = pickup ? 0 : DELIVERY_FEE;
-		const tax = amount * TAX_RATE;
-		document.querySelector("#summary-subtotal").textContent = money(amount);
-		document.querySelector("#summary-tax").textContent = money(tax);
-		document.querySelector("#summary-delivery").textContent = pickup ? "Free" : money(delivery);
-		document.querySelector("#delivery-label").textContent = pickup ? "Pickup" : "Delivery";
-		document.querySelector("#summary-total").textContent = money(amount + tax + delivery);
+		itemsRegion.innerHTML = items.map(({ product, quantity }) => {
+			const unitPriceMinorUnits = toMinorUnits(product.price);
+			return `<div class="summary-item"><div><strong>${product.name}</strong><small>${moneyMinorUnits(unitPriceMinorUnits)} each</small><div class="quantity-controls"><button class="icon-button" type="button" data-cart-action="decrease" data-id="${product.id}" aria-label="Decrease ${product.name} quantity">−</button><span aria-live="polite">${quantity}</span><button class="icon-button" type="button" data-cart-action="increase" data-id="${product.id}" aria-label="Increase ${product.name} quantity">+</button><button class="text-link" type="button" data-cart-action="remove" data-id="${product.id}" aria-label="Remove ${product.name}" style="border:0;background:none;cursor:pointer">Remove</button></div></div><strong>${moneyMinorUnits(unitPriceMinorUnits * quantity)}</strong></div>`;
+		}).join("");
+		const isPickup = document.querySelector("input[name='fulfillment'][value='pickup']")?.checked || false;
+		const totals = calculateCheckoutTotals(subtotalMinorUnits(), isPickup ? "pickup" : "delivery");
+		document.querySelector("#summary-subtotal").textContent = moneyMinorUnits(totals.subtotalMinorUnits);
+		document.querySelector("#summary-tax").textContent = moneyMinorUnits(totals.taxMinorUnits);
+		document.querySelector("#summary-delivery").textContent = isPickup ? "Free" : moneyMinorUnits(totals.deliveryFeeMinorUnits);
+		document.querySelector("#delivery-label").textContent = isPickup ? "Pickup" : "Delivery";
+		document.querySelector("#summary-total").textContent = moneyMinorUnits(totals.totalMinorUnits);
 	}
 
 	function validatePhone(value) {
@@ -283,6 +424,12 @@
 	function initCheckout() {
 		const form = document.querySelector("#checkout-form");
 		if (!form) return;
+		updatePriceApprovalNotice();
+		const paymentNote = document.querySelector(".demo-note div");
+		if (paymentNote) {
+			paymentNote.innerHTML = `<strong>ETB pricing approval required</strong><span data-pricing-approval></span>`;
+			updatePriceApprovalNotice();
+		}
 		const addressField = document.querySelector("#address-field");
 		const address = document.querySelector("#checkout-address");
 		const status = form.querySelector("[data-form-status]");
@@ -291,15 +438,55 @@
 		const params = new URLSearchParams(window.location.search);
 		const paymentStatus = params.get("status");
 		const orderNumber = params.get("order");
+		const paymentStatusToken = orderNumber ? getPaymentStatusToken(orderNumber) : null;
 
-		if (paymentStatus === "success" && orderNumber) {
-			status.textContent = "Payment confirmed.";
-			document.querySelector("#confirmation-eyebrow").textContent = "Payment confirmed";
-			document.querySelector("#confirmation-message").textContent = "Your card payment cleared securely. We’re preparing your Savora order now.";
-			document.querySelector("#confirmation-details").textContent = `Order ${orderNumber} · Card payment approved · We’ll keep you posted as it’s prepared.`;
+		if (paymentStatus === "success" && orderNumber && paymentStatusToken) {
+			status.textContent = "Checking payment status…";
+			document.querySelector("#confirmation-eyebrow").textContent = "Payment verification";
+			document.querySelector("#confirmation-message").textContent = "We’re checking your payment with the payment provider. This page does not confirm payment by itself.";
+			document.querySelector("#confirmation-details").textContent = `Order ${orderNumber} · Payment status is being checked.`;
 			layout.hidden = true;
 			confirmation.hidden = false;
+			fetch("/api/orders/payment-status", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ orderNumber, token: paymentStatusToken }),
+			})
+				.then(async (response) => {
+					const result = await response.json();
+					if (!response.ok) throw new Error(result.error || "Unable to check payment status.");
+					return result;
+				})
+				.then((result) => {
+					if (result.paymentStatus === "PAID" && result.orderStatus === "CONFIRMED") {
+						try {
+							sessionStorage.removeItem(`savora-payment-status:${orderNumber}`);
+						} catch {
+							console.warn("Verified payment-status access could not be cleared from this tab.");
+						}
+						status.textContent = "Payment verified.";
+						document.querySelector("#confirmation-eyebrow").textContent = "Payment confirmed";
+						document.querySelector("#confirmation-message").textContent = "Your payment has been verified by the server. We’re preparing your Savora order now.";
+						document.querySelector("#confirmation-details").textContent = `Order ${orderNumber} · Payment approved · We’ll keep you posted as it’s prepared.`;
+					} else {
+						status.textContent = "Payment is still pending.";
+						document.querySelector("#confirmation-eyebrow").textContent = "Payment pending";
+						document.querySelector("#confirmation-message").textContent = "Payment and order status are checked by the server. Refresh this page to check again; the order remains unconfirmed until its persisted status is confirmed.";
+						document.querySelector("#confirmation-details").textContent = `Order ${orderNumber} · Payment status: ${result.paymentStatus || "PENDING"} · Order status: ${result.orderStatus || "PENDING"}.`;
+					}
+				})
+				.catch(() => {
+					status.textContent = "Unable to check payment status.";
+					document.querySelector("#confirmation-message").textContent = "We could not verify the payment right now. Your order remains pending until the server confirms payment.";
+				});
 			window.scrollTo({ top: confirmation.getBoundingClientRect().top + window.scrollY - 100, behavior: "smooth" });
+		} else if (paymentStatus === "success" && orderNumber) {
+			status.textContent = "Payment status access is unavailable.";
+			document.querySelector("#confirmation-eyebrow").textContent = "Payment status unavailable";
+			document.querySelector("#confirmation-message").textContent = "This secure payment-status link is missing or expired. Contact Savora Express for help.";
+			document.querySelector("#confirmation-details").textContent = `Order ${orderNumber} · Status was not disclosed.`;
+			layout.hidden = true;
+			confirmation.hidden = false;
 		}
 
 		if (paymentStatus === "cancelled") {
@@ -451,7 +638,11 @@
 	window.addEventListener("storage", (event) => {
 		if (event.key !== CART_KEY) return;
 		try {
-			cart = JSON.parse(event.newValue || "{}") || {};
+			const normalized = normalizePersistedCart(JSON.parse(event.newValue || "{}"), products);
+			cart = normalized.cart;
+			if (normalized.removedCount > 0) {
+				showToast("Some saved cart items are no longer available and were removed.", true);
+			}
 		} catch (error) {
 			console.error("Could not sync cart after storage event:", error);
 			cart = {};
@@ -463,12 +654,20 @@
 	async function boot() {
 		document.querySelectorAll("[data-year]").forEach((element) => { element.textContent = String(new Date().getFullYear()); });
 		await hydrateProducts();
+		await hydrateCheckoutConfig();
 		cart = loadCart();
+		saveCart();
+		if (removedCartItemsCount > 0) {
+			showToast("Some older cart items are no longer on the menu and were removed. Your available items were kept.", true);
+			removedCartItemsCount = 0;
+		}
 		updateCartIndicators();
+		updatePriceApprovalNotice();
 		initNavigation();
 		initFeaturedDishes();
 		initOffers();
 		initMenu();
+		initProductDetails();
 		initCheckout();
 		initForms();
 	}

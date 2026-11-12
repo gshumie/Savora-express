@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import { prisma } from '../db/prisma.js';
 import { requireAdmin, requireAuth } from '../middleware/auth.js';
+import {
+  applyApprovedEtbPrices,
+  getApprovedEtbPrice,
+} from '../lib/approvedProductPricing.js';
 
 const router = Router();
 
@@ -11,14 +15,14 @@ function mapProduct(product) {
     slug: product.slug,
     category: product.category?.name || 'General',
     categoryId: product.categoryId,
-    price: Number(product.price),
+    price: getApprovedEtbPrice(product),
     description: product.description,
     image: product.image,
     rating: Number(product.rating ?? 4.7),
     reviews: Number(product.reviews ?? 0),
     popularity: Number(product.popularity ?? 0),
     badge: product.badge || null,
-    originalPrice: product.originalPrice ? Number(product.originalPrice) : null,
+    originalPrice: null,
     featured: Boolean(product.featured),
     isActive: product.isActive,
     stock: product.stock,
@@ -40,7 +44,7 @@ router.get('/', async (req, res) => {
       orderBy: [{ featured: 'desc' }, { popularity: 'desc' }, { name: 'asc' }],
     });
 
-    return res.json({ products: products.map(mapProduct) });
+    return res.json({ products: applyApprovedEtbPrices(products).map(mapProduct) });
   } catch (error) {
     console.error('Product list error:', error);
     return res.status(500).json({ error: 'Unable to load menu products.' });
@@ -80,7 +84,7 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { name, categoryId, price, description, image, badge, originalPrice, featured, stock } = req.body || {};
+    const { name, categoryId, price, description, image, badge, featured, stock } = req.body || {};
 
     if (!name || !categoryId || !price) {
       return res.status(400).json({ error: 'Name, category, and price are required.' });
@@ -92,16 +96,17 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
     }
 
     const slug = String(name).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const approvedPrice = getApprovedEtbPrice({ slug });
     const product = await prisma.product.create({
       data: {
         name: String(name).trim(),
         slug,
         categoryId,
-        price: Number(price),
+        price: approvedPrice,
         description: description || '',
         image: image || 'https://images.unsplash.com/photo-1547592180-85f173990554',
         badge: badge || null,
-        originalPrice: originalPrice ? Number(originalPrice) : null,
+        originalPrice: null,
         featured: Boolean(featured),
         stock: Number(stock || 100),
         isActive: true,

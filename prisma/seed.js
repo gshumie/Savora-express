@@ -1,6 +1,7 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { config } from '../src/config.js';
+import { prisma } from '../src/db/prisma.js';
+import { APPROVED_ETB_PRICES } from '../src/lib/approvedPrices.js';
+import { assertDatabaseSeedingAllowed } from '../src/lib/seedGuard.js';
 
 const categories = [
   { name: 'Burgers', slug: 'burgers', description: 'Smash burgers, stacked fresh and served hot.' },
@@ -18,7 +19,7 @@ const products = [
     category: 'Burgers',
     description: 'Two seared beef patties with sharp cheddar, crisp lettuce, house pickles, and Savora sauce on a toasted brioche bun.',
     image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=900&q=82',
-    price: 16.00,
+    price: APPROVED_ETB_PRICES['the-savora-stack'],
     rating: 4.9,
     reviews: 304,
     popularity: 100,
@@ -32,7 +33,7 @@ const products = [
     category: 'Burgers',
     description: 'Grilled chicken, smoked barbecue glaze, crunchy slaw, and pepper jack cheese on a toasted bun.',
     image: 'https://images.unsplash.com/photo-1606755962773-d324e0a13086?auto=format&fit=crop&w=900&q=82',
-    price: 14.50,
+    price: APPROVED_ETB_PRICES['smoky-bbq-chicken-burger'],
     rating: 4.7,
     reviews: 126,
     popularity: 86,
@@ -45,7 +46,7 @@ const products = [
     category: 'Pizza',
     description: 'San Marzano tomato, fresh mozzarella, basil, and a drizzle of extra-virgin olive oil.',
     image: 'https://images.unsplash.com/photo-1579751626657-72bc17010498?auto=format&fit=crop&w=900&q=82',
-    price: 15.50,
+    price: APPROVED_ETB_PRICES['garden-margherita'],
     rating: 4.9,
     reviews: 218,
     popularity: 98,
@@ -59,7 +60,7 @@ const products = [
     category: 'Pizza',
     description: 'Pepperoni, roasted peppers, Calabrian chile, hot honey, and whipped ricotta.',
     image: 'https://images.unsplash.com/photo-1628840042765-356cda07504e?auto=format&fit=crop&w=900&q=82',
-    price: 18.00,
+    price: APPROVED_ETB_PRICES['calabrian-heat'],
     rating: 4.8,
     reviews: 174,
     popularity: 91,
@@ -73,7 +74,7 @@ const products = [
     category: 'Pasta',
     description: 'Wide ribbons of pasta tossed with slow-braised beef ragu, parmesan, and fresh herbs.',
     image: 'https://images.unsplash.com/photo-1551183053-bf91a1d81141?auto=format&fit=crop&w=900&q=82',
-    price: 19.00,
+    price: APPROVED_ETB_PRICES['sunday-pappardelle'],
     rating: 4.9,
     reviews: 167,
     popularity: 94,
@@ -87,7 +88,7 @@ const products = [
     category: 'Pasta',
     description: 'Penne with grilled chicken, sun-dried tomatoes, baby spinach, and a parmesan cream sauce.',
     image: 'https://images.unsplash.com/photo-1473093295043-cdd812d0e601?auto=format&fit=crop&w=900&q=82',
-    price: 17.50,
+    price: APPROVED_ETB_PRICES['creamy-tuscan-chicken-pasta'],
     rating: 4.8,
     reviews: 143,
     popularity: 89,
@@ -100,7 +101,7 @@ const products = [
     category: 'Chicken',
     description: 'Buttermilk-marinated chicken tenders with seasoned fries and a choice of house dipping sauce.',
     image: 'https://images.unsplash.com/photo-1562967914-608f82629710?auto=format&fit=crop&w=900&q=82',
-    price: 15.00,
+    price: APPROVED_ETB_PRICES['crispy-buttermilk-chicken'],
     rating: 4.8,
     reviews: 188,
     popularity: 92,
@@ -114,7 +115,7 @@ const products = [
     category: 'Chicken',
     description: 'Juicy roasted chicken with lemon, garlic, garden herbs, and a side of seasonal vegetables.',
     image: 'https://images.unsplash.com/photo-1532550907401-a500c9a57435?auto=format&fit=crop&w=900&q=82',
-    price: 18.50,
+    price: APPROVED_ETB_PRICES['lemon-herb-roast-chicken'],
     rating: 4.7,
     reviews: 96,
     popularity: 78,
@@ -127,7 +128,7 @@ const products = [
     category: 'Drinks',
     description: 'Fresh-squeezed lemon, garden mint, and just enough sweetness, served over ice.',
     image: 'https://images.unsplash.com/photo-1544145945-f90425340c7e?auto=format&fit=crop&w=900&q=82',
-    price: 5.00,
+    price: APPROVED_ETB_PRICES['fresh-mint-lemonade'],
     rating: 4.8,
     reviews: 112,
     popularity: 80,
@@ -140,7 +141,7 @@ const products = [
     category: 'Drinks',
     description: 'Ripe strawberries, fresh basil, sparkling water, and a squeeze of lime.',
     image: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?auto=format&fit=crop&w=900&q=82',
-    price: 6.00,
+    price: APPROVED_ETB_PRICES['strawberry-basil-cooler'],
     rating: 4.7,
     reviews: 74,
     popularity: 70,
@@ -153,7 +154,7 @@ const products = [
     category: 'Desserts',
     description: 'Espresso-soaked sponge layered with mascarpone cream and finished with cocoa.',
     image: 'https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?auto=format&fit=crop&w=900&q=82',
-    price: 8.50,
+    price: APPROVED_ETB_PRICES['house-tiramisu'],
     rating: 4.9,
     reviews: 196,
     popularity: 93,
@@ -167,7 +168,7 @@ const products = [
     category: 'Desserts',
     description: 'A rich, fudgy chocolate brownie served warm with vanilla bean ice cream.',
     image: 'https://images.unsplash.com/photo-1606313564200-e75d5e30476c?auto=format&fit=crop&w=900&q=82',
-    price: 7.50,
+    price: APPROVED_ETB_PRICES['warm-chocolate-brownie'],
     rating: 4.8,
     reviews: 138,
     popularity: 85,
@@ -177,6 +178,8 @@ const products = [
 ];
 
 async function main() {
+  assertDatabaseSeedingAllowed(config.nodeEnv, process.env.ALLOW_DATABASE_SEEDING === 'true');
+
   const result = await prisma.$transaction(async (tx) => {
     const productCount = await tx.product.count();
     if (productCount > 0) {
@@ -215,7 +218,9 @@ async function main() {
 
 main()
   .catch((error) => {
-    console.error('Safe product seed failed:', error);
+    console.error(error.message === 'Seeding is disabled. Explicit non-production opt-in is required.'
+      ? error.message
+      : 'Product seed failed.');
     process.exitCode = 1;
   })
   .finally(async () => {
