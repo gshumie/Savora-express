@@ -12,6 +12,66 @@
 
 ---
 
+## 🌐 Live Production URLs
+
+| Resource | Direct Link | Description |
+| :--- | :--- | :--- |
+| **Live Application** | [savora-express.vercel.app](https://savora-express.vercel.app) | Production storefront deployed on Vercel Serverless |
+| **Interactive Menu** | [savora-express.vercel.app/menu.html](https://savora-express.vercel.app/menu.html) | Searchable and filterable dish catalog with ETB pricing |
+| **Checkout & Chapa Payment** | [savora-express.vercel.app/checkout.html](https://savora-express.vercel.app/checkout.html) | Delivery/pickup selection and Chapa ETB checkout |
+| **About & Story** | [savora-express.vercel.app/about.html](https://savora-express.vercel.app/about.html) | Restaurant story, kitchen values, and brand heritage |
+| **Admin Operations Console** | [savora-express.vercel.app/admin.html](https://savora-express.vercel.app/admin.html) | Protected administrative management and order fulfillment |
+| **GitHub Repository** | [github.com/gshumie/Savora-express](https://github.com/gshumie/Savora-express) | Complete source code, migrations, tests, and documentation |
+
+---
+
+## 📸 Screenshots & UI Walkthrough
+
+### 1. Hero & Brand Experience
+*Full-bleed culinary hero section featuring signature dishes, brand motto (**"Delicious Moments, Delivered Fresh."**), responsive dark navigation bar with real-time session authentication state (`Admin` / `User` / `Logout`), and clear call-to-action buttons.*
+
+<p align="center">
+  <img src="./docs/screenshots/01-hero-landing.png" alt="Savora Express Hero Landing Page" width="100%">
+</p>
+
+---
+
+### 2. Interactive Menu & Category Showcase
+*Dynamic category showcase (**"A little bit of everything good."**) featuring high-resolution food photography, curated offerings across **Pizza**, **Burgers**, **Pasta**, and **Desserts**, and fast navigation to the filtered catalog.*
+
+<p align="center">
+  <img src="./docs/screenshots/02-menu-categories.png" alt="Menu Categories Showcase" width="100%">
+</p>
+
+---
+
+### 3. Seamless Checkout & Chapa ETB Payments
+*Streamlined multi-step checkout: fulfillment switcher between **Doorstep Delivery** (ETB 100.00 flat) and **Store Pickup** (Free, ready in ~20 minutes), accurate minor-unit ETB calculations (subtotal, 8% VAT, delivery fee, grand total), authenticated customer profile prefill, and official Ethiopian Birr online payments via **Chapa**.*
+
+<p align="center">
+  <img src="./docs/screenshots/03-chapa-checkout.png" alt="Checkout and Chapa Online Payment" width="100%">
+</p>
+
+---
+
+### 4. Featured Specials & Promotions
+*High-impact promotional banner (**"Make tonight a table-full-of-favorites kind of night."**) highlighting freshly prepared recipes, fresh-to-order kitchen badges, and direct catalog discovery shortcuts.*
+
+<p align="center">
+  <img src="./docs/screenshots/04-featured-specials.png" alt="Featured Specials and Promotions" width="100%">
+</p>
+
+---
+
+### 5. Restaurant Story & Kitchen Heritage
+*Editorial brand narrative (**"Food that brings us closer."** and **"Made with care. Meant to be shared."**) presenting the kitchen's origins, culinary philosophy, and neighborhood dedication.*
+
+<p align="center">
+  <img src="./docs/screenshots/05-about-story.png" alt="Restaurant Story and About Page" width="100%">
+</p>
+
+---
+
 ## 🌟 Key Features
 
 ### 🍽️ Customer Experience & Ordering
@@ -83,7 +143,9 @@ savora-express/
 │   ├── middleware/             # Express middlewares (auth guards, pricing approval, rate limiting)
 │   ├── routes/                 # Express API route modules (auth, products, cart, orders, admin)
 │   └── services/               # External service integrations (Chapa, notifications, Stripe, payment status)
-└── tests/                      # Automated unit and integration test suite (131 tests)
+├── tests/                      # Automated unit and integration test suite (131 tests)
+└── docs/
+    └── screenshots/            # Application walkthrough screenshots and demo assets
 ```
 
 ---
