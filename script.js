@@ -1190,6 +1190,7 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 
 		async function loadOrders() {
 			const tbody = document.querySelector("#orders-table-body");
+			if (!tbody) return;
 			try {
 				const res = await fetch("/api/admin/orders", {
 					headers: { Authorization: `Bearer ${token}` },
@@ -1202,22 +1203,49 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 				}
 				tbody.innerHTML = orders.map((o) => {
 					const date = new Date(o.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-					const itemsSummary = o.items?.map((i) => `${i.quantity}x ${i.product?.name || "Item"}`).join(", ") || "—";
+					const itemsSummary = o.items?.map((i) => `${i.quantity}x ${i.product?.name || "Dish"}`).join(", ") || "—";
 					const paymentStatus = o.payment?.status || "PENDING";
 					const paymentPillClass = paymentStatus === "PAID" ? "success" : paymentStatus === "FAILED" ? "danger" : "warning";
+					const fulfillmentType = o.fulfillmentType || "DELIVERY";
+
+					const itemsRowsHtml = (o.items && o.items.length > 0)
+						? o.items.map((i) => {
+							const name = i.product?.name || "Dish Item";
+							const unitPrice = Number(i.unitPrice || 0);
+							const lineTotal = Number(i.quantity || 1) * unitPrice;
+							return `
+								<tr>
+									<td><strong>${name}</strong></td>
+									<td style="text-align:center;">${i.quantity}</td>
+									<td style="text-align:right;">${money(unitPrice)}</td>
+									<td style="text-align:right;font-weight:600;">${money(lineTotal)}</td>
+								</tr>
+							`;
+						}).join("")
+						: `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:8px;">No item details recorded</td></tr>`;
+
 					return `
 						<tr data-order-id="${o.id}">
-							<td><strong>${o.orderNumber}</strong></td>
+							<td>
+								<strong>${o.orderNumber}</strong>
+								${o.notes ? `<br><small style="color:var(--orange-dark);font-size:10px;font-weight:700;">★ Has Notes</small>` : ""}
+							</td>
 							<td style="white-space:nowrap;font-size:11px;">${date}</td>
 							<td>
 								<strong>${o.customerName}</strong><br>
 								<small style="color:var(--muted)">${o.customerEmail}</small>
-								${o.customerPhone ? `<br><small style="color:var(--muted)">${o.customerPhone}</small>` : ""}
+								${o.customerPhone ? `<br><small style="color:var(--charcoal);font-weight:600;">${o.customerPhone}</small>` : ""}
 							</td>
-							<td style="max-width:200px;font-size:11px;" title="${itemsSummary}">${itemsSummary}</td>
+							<td style="max-width:180px;font-size:11px;" title="${itemsSummary}">
+								<strong>${o.items?.length || 0} items</strong><br>
+								<span style="color:var(--muted);">${itemsSummary}</span>
+							</td>
 							<td><strong>${money(o.total)}</strong></td>
 							<td><span class="status-pill ${paymentPillClass}">${paymentStatus}</span></td>
-							<td style="text-transform:capitalize;">${o.fulfillmentType || "Delivery"}</td>
+							<td>
+								<span class="order-fulfillment-badge">${fulfillmentType}</span>
+								${o.shippingAddress ? `<br><small style="color:var(--muted);font-size:10px;" title="${o.shippingAddress}">${o.shippingAddress.slice(0, 24)}${o.shippingAddress.length > 24 ? "…" : ""}</small>` : ""}
+							</td>
 							<td>
 								<select class="table-status-select" data-order-status-select="${o.id}">
 									${["PENDING", "CONFIRMED", "PREPARING", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"].map(
@@ -1226,7 +1254,67 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 								</select>
 							</td>
 							<td>
-								<button type="button" class="table-action-btn" data-action="update-order-status" data-order-id="${o.id}">Update</button>
+								<div style="display:flex;gap:4px;flex-direction:column;">
+									<button type="button" class="table-action-btn" data-action="update-order-status" data-order-id="${o.id}">Save</button>
+									<button type="button" class="table-action-btn" data-action="toggle-order-details" data-order-id="${o.id}">Details ▾</button>
+								</div>
+							</td>
+						</tr>
+						<tr id="order-details-${o.id}" class="order-detail-expanded" style="display:none;">
+							<td colspan="9" style="padding:12px 16px;">
+								<div class="order-detail-box">
+									<div class="order-detail-section">
+										<h4>👤 Customer &amp; Fulfillment</h4>
+										<p style="margin:4px 0;"><strong>Name:</strong> ${o.customerName}</p>
+										<p style="margin:4px 0;"><strong>Phone:</strong> ${o.customerPhone || "N/A"}</p>
+										<p style="margin:4px 0;"><strong>Email:</strong> ${o.customerEmail}</p>
+										<p style="margin:4px 0;"><strong>Mode:</strong> ${fulfillmentType}</p>
+										<p style="margin:4px 0;"><strong>Delivery Address:</strong> ${o.shippingAddress || (fulfillmentType === "PICKUP" ? "Store Pickup" : "None provided")}</p>
+										<p style="margin:4px 0;"><strong>Customer Notes:</strong> ${o.notes || "None"}</p>
+									</div>
+									<div class="order-detail-section">
+										<h4>💳 Payment Details</h4>
+										<p style="margin:4px 0;"><strong>Status:</strong> <span class="status-pill ${paymentPillClass}">${paymentStatus}</span></p>
+										<p style="margin:4px 0;"><strong>Provider:</strong> ${o.payment?.provider || "DEVELOPMENT"}</p>
+										<p style="margin:4px 0;"><strong>Amount:</strong> ${money(o.payment?.amount || o.total)}</p>
+										<p style="margin:4px 0;"><strong>Transaction Ref:</strong> <code style="font-size:11px;">${o.payment?.transactionId || "—"}</code></p>
+										<p style="margin:4px 0;"><strong>Order Status:</strong> <strong>${o.status}</strong></p>
+									</div>
+									<div class="order-detail-section" style="grid-column: span 1 / -1;">
+										<h4>📦 Line Items (${o.items?.length || 0})</h4>
+										<table class="order-detail-items-table">
+											<thead>
+												<tr>
+													<th>Dish</th>
+													<th style="text-align:center;">Qty</th>
+													<th style="text-align:right;">Unit Price</th>
+													<th style="text-align:right;">Subtotal</th>
+												</tr>
+											</thead>
+											<tbody>
+												${itemsRowsHtml}
+											</tbody>
+											<tfoot>
+												<tr>
+													<td colspan="3" style="text-align:right;color:var(--muted);padding-top:8px;">Subtotal:</td>
+													<td style="text-align:right;font-weight:600;padding-top:8px;">${money(o.subtotal || o.total)}</td>
+												</tr>
+												<tr>
+													<td colspan="3" style="text-align:right;color:var(--muted);">Tax (8%):</td>
+													<td style="text-align:right;font-weight:600;">${money(o.tax || 0)}</td>
+												</tr>
+												<tr>
+													<td colspan="3" style="text-align:right;color:var(--muted);">Delivery Fee:</td>
+													<td style="text-align:right;font-weight:600;">${money(o.deliveryFee || 0)}</td>
+												</tr>
+												<tr style="font-size:14px;border-top:1px solid var(--line);">
+													<td colspan="3" style="text-align:right;font-weight:800;color:var(--charcoal);">Grand Total:</td>
+													<td style="text-align:right;font-weight:800;color:var(--orange-dark);">${money(o.total)}</td>
+												</tr>
+											</tfoot>
+										</table>
+									</div>
+								</div>
 							</td>
 						</tr>
 					`;
@@ -1307,11 +1395,45 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 				});
 				if (!res.ok) throw new Error("Could not update order status.");
 				showToast(`Order status updated to ${newStatus}.`);
+				loadSummary();
 			} catch (err) {
 				showToast(err.message, true);
 			} finally {
 				btn.disabled = false;
 			}
+		});
+
+		document.addEventListener("change", async (e) => {
+			const select = e.target.closest('[data-order-status-select]');
+			if (!select) return;
+			const orderId = select.dataset.orderStatusSelect;
+			const newStatus = select.value;
+			select.disabled = true;
+			try {
+				const res = await fetch(`/api/admin/orders/${orderId}/status`, {
+					method: "PATCH",
+					headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+					body: JSON.stringify({ status: newStatus }),
+				});
+				if (!res.ok) throw new Error("Could not update order status.");
+				showToast(`Order status updated to ${newStatus}.`);
+				loadSummary();
+			} catch (err) {
+				showToast(err.message, true);
+			} finally {
+				select.disabled = false;
+			}
+		});
+
+		document.addEventListener("click", (e) => {
+			const btn = e.target.closest('[data-action="toggle-order-details"]');
+			if (!btn) return;
+			const orderId = btn.dataset.orderId;
+			const detailRow = document.querySelector(`#order-details-${orderId}`);
+			if (!detailRow) return;
+			const isHidden = detailRow.style.display === "none";
+			detailRow.style.display = isHidden ? "table-row" : "none";
+			btn.textContent = isHidden ? "Details ▴" : "Details ▾";
 		});
 
 		document.addEventListener("click", async (e) => {
@@ -1378,6 +1500,15 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 				loadOrders();
 				loadDishes();
 				showToast("Dashboard refreshed.");
+			});
+		}
+
+		const btnRefreshOrders = document.querySelector("#btn-refresh-orders");
+		if (btnRefreshOrders) {
+			btnRefreshOrders.addEventListener("click", () => {
+				loadOrders();
+				loadSummary();
+				showToast("Orders refreshed.");
 			});
 		}
 

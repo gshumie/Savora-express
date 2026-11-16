@@ -52,9 +52,17 @@ router.get('/orders', async (_req, res) => {
 router.patch('/orders/:id/status', async (req, res) => {
   try {
     const { status } = req.body || {};
+    const validStatuses = ['PENDING', 'CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid order status.' });
+    }
     const order = await prisma.order.update({
       where: { id: req.params.id },
       data: { status },
+      include: {
+        items: { include: { product: true } },
+        payment: true,
+      },
     });
 
     return res.json({ order, message: 'Order status updated.' });

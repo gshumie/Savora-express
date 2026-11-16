@@ -2,6 +2,7 @@ import { config } from '../src/config.js';
 import { prisma } from '../src/db/prisma.js';
 import { APPROVED_ETB_PRICES } from '../src/lib/approvedPrices.js';
 import { assertDatabaseSeedingAllowed } from '../src/lib/seedGuard.js';
+import { hashPassword } from '../src/lib/auth.js';
 
 const categories = [
   { name: 'Burgers', slug: 'burgers', description: 'Smash burgers, stacked fresh and served hot.' },
@@ -179,6 +180,33 @@ const products = [
 
 async function main() {
   assertDatabaseSeedingAllowed(config.nodeEnv, process.env.ALLOW_DATABASE_SEEDING === 'true');
+
+  const defaultAdminEmail = 'admin@savora.com';
+  const defaultAdminPassword = 'Admin@Savora2026!';
+  const existingAdmin = await prisma.user.findUnique({
+    where: { email: defaultAdminEmail },
+  });
+
+  if (!existingAdmin) {
+    const passwordHash = await hashPassword(defaultAdminPassword);
+    await prisma.user.create({
+      data: {
+        name: 'Savora Admin',
+        email: defaultAdminEmail,
+        passwordHash,
+        role: 'ADMIN',
+      },
+    });
+    console.log(`[seed] Admin user created: ${defaultAdminEmail} (Password: ${defaultAdminPassword})`);
+  } else {
+    if (existingAdmin.role !== 'ADMIN') {
+      await prisma.user.update({
+        where: { id: existingAdmin.id },
+        data: { role: 'ADMIN' },
+      });
+    }
+    console.log(`[seed] Admin user verified: ${defaultAdminEmail} (Role: ADMIN)`);
+  }
 
   const result = await prisma.$transaction(async (tx) => {
     const productCount = await tx.product.count();

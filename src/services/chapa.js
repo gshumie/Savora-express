@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { toMinorUnits, minorUnitsToDecimal } from '../lib/money.js';
+import { notifyNewOrder } from './notifications.js';
 
 const CHAPA_API_URL = 'https://api.chapa.co/v1';
 
@@ -198,18 +199,18 @@ export async function verifyAndApplyChapaPayment({
     where: { provider: 'CHAPA', transactionId: txRef },
     include: { order: true },
   });
-  if (!payment) return { paymentStatus: 'NOT_FOUND', orderStatus: 'NOT_FOUND', verified: false };
+  if (!payment) return { paymentStatus: 'NOT_FOUND', orderStatus: 'NOT_FOUND', verified: false, orderId: null };
   if (payment.status === 'PAID') {
     const orderStatus = await confirmOrderForPaidPayment(prisma, payment.orderId);
-    return { paymentStatus: 'PAID', orderStatus, verified: true, alreadyPaid: true };
+    return { paymentStatus: 'PAID', orderStatus, verified: true, alreadyPaid: true, orderId: payment.orderId };
   }
   if (payment.status !== 'PENDING' || payment.order.status !== 'PENDING') {
-    return { paymentStatus: payment.status, orderStatus: payment.order.status, verified: false };
+    return { paymentStatus: payment.status, orderStatus: payment.order.status, verified: false, orderId: payment.orderId };
   }
 
   const verified = await verifyChapaTransaction({ secretKey, txRef, fetchImpl });
   if (!transactionMatchesOrder(verified, payment, currency)) {
-    return { paymentStatus: 'PENDING', orderStatus: payment.order.status, verified: false };
+    return { paymentStatus: 'PENDING', orderStatus: payment.order.status, verified: false, orderId: payment.orderId };
   }
 
   return prisma.$transaction(async (tx) => {
@@ -235,6 +236,7 @@ export async function verifyAndApplyChapaPayment({
           orderStatus,
           verified: true,
           alreadyPaid: true,
+          orderId: payment.orderId,
         };
       }
       return {
@@ -242,12 +244,27 @@ export async function verifyAndApplyChapaPayment({
         orderStatus: currentOrder?.status || 'NOT_FOUND',
         verified: false,
         alreadyPaid: false,
+        orderId: payment.orderId,
       };
     }
 
     const orderStatus = await confirmOrderWithinTransaction(tx, payment.orderId);
-    return { paymentStatus: 'PAID', orderStatus, verified: true, alreadyPaid: false };
+    return { paymentStatus: 'PAID', orderStatus, verified: true, alreadyPaid: false, orderId: payment.orderId };
   });
+
+  if (result.paymentStatus === 'PAID' && !result.alreadyPaid) {
+    try {
+      const fullOrder = await prisma.order.findUnique({
+        where: { id: payment.orderId },
+        include: { items: { include: { product: true } }, payment: true },
+      });
+      if (fullOrder) {
+        notifyNewOrder(fullOrder, 'PAYMENT_CONFIRMED').catch(() => {});
+      }
+    } catch {}
+  }
+
+  return result;
 }
 
 async function confirmOrderWithinTransaction(tx, orderId) {

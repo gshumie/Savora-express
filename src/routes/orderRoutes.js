@@ -20,6 +20,7 @@ import { createOrderStatusToken } from '../lib/orderStatusToken.js';
 import { initializePaymentProvider } from '../services/paymentInitialization.js';
 import { extractGuestSessionId, normalizeGuestSessionId } from '../lib/cartIdentity.js';
 import { optionalAuth } from '../middleware/auth.js';
+import { notifyNewOrder } from '../services/notifications.js';
 
 const router = Router();
 router.use(optionalAuth);
@@ -213,6 +214,25 @@ router.post('/checkout', requireEtbPriceApproval(config), async (req, res) => {
       return createdOrder;
     });
 
+    const checkoutOrderForNotification = {
+      ...order,
+      subtotal,
+      tax,
+      deliveryFee,
+      total,
+      items: orderItems.map((item) => {
+        const prod = cart.items.find((ci) => ci.productId === item.productId)?.product;
+        return {
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          product: prod ? { name: prod.name } : undefined,
+        };
+      }),
+    };
+    notifyNewOrder(checkoutOrderForNotification, 'ORDER_CREATED').catch((err) => {
+      console.error('[notifications] Failed to notify on checkout:', err?.message || err);
+    });
+
     const provider = resolvePaymentProvider(config);
     if (provider === 'chapa') {
       const txRef = order.orderNumber;
@@ -356,6 +376,25 @@ router.post('/checkout-session', requireEtbPriceApproval(config), async (req, re
       });
 
       return createdOrder;
+    });
+
+    const sessionOrderForNotification = {
+      ...order,
+      subtotal,
+      tax,
+      deliveryFee,
+      total,
+      items: orderItems.map((item) => {
+        const prod = cart.items.find((ci) => ci.productId === item.productId)?.product;
+        return {
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          product: prod ? { name: prod.name } : undefined,
+        };
+      }),
+    };
+    notifyNewOrder(sessionOrderForNotification, 'ORDER_CREATED').catch((err) => {
+      console.error('[notifications] Failed to notify on checkout session:', err?.message || err);
     });
 
     if (provider === 'demo') {

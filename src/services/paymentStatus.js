@@ -1,5 +1,6 @@
 import { isValidOrderStatusToken } from '../lib/orderStatusToken.js';
 import { verifyAndApplyChapaPayment } from './chapa.js';
+import { notifyNewOrder } from './notifications.js';
 
 export function createPaymentStatusHandler({ prisma, config }) {
   return async (req, res) => {
@@ -28,6 +29,18 @@ export function createPaymentStatusHandler({ prisma, config }) {
         });
         paymentStatus = result.paymentStatus;
         orderStatus = result.orderStatus || orderStatus;
+
+        if (result.paymentStatus === 'PAID' && !result.alreadyPaid) {
+          try {
+            const fullOrder = await prisma.order.findUnique({
+              where: { id: order.id },
+              include: { items: { include: { product: true } }, payment: true },
+            });
+            if (fullOrder) {
+              notifyNewOrder(fullOrder, 'PAYMENT_CONFIRMED').catch(() => {});
+            }
+          } catch {}
+        }
       }
 
       return res.json({ orderStatus, paymentStatus });
