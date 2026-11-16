@@ -104,7 +104,49 @@ app.get('/api/checkout-config', (_req, res) => {
   let paymentEnvironment = null;
 
   if (paymentProvider === 'chapa') {
-    paymentEnvironment = config.chapaEnvironment;
+    if (config.chapaSecretKey && /test/i.test(config.chapaSecretKey)) {
+      paymentEnvironment = 'test';
+    } else {
+      paymentEnvironment = config.chapaEnvironment || 'live';
+    }
+  } else if (paymentProvider === 'stripe') {
+    if (config.stripeSecretKey.startsWith('sk_live_') || config.stripeSecretKey.startsWith('rk_live_')) {
+      paymentEnvironment = 'live';
+    } else if (config.stripeSecretKey.startsWith('sk_test_') || config.stripeSecretKey.startsWith('rk_test_')) {
+      paymentEnvironment = 'test';
+    }
+  } else if (paymentProvider === 'demo') {
+    paymentEnvironment = 'test';
+  }
+
+  const paymentAvailable = paymentProvider !== 'unavailable';
+
+  res.json({
+    currency: CURRENCY,
+    pricesApproved: config.etbPricesApproved,
+    paymentProvider,
+    paymentEnvironment,
+    paymentAvailable,
+    provider: paymentProvider,
+    chapaEnabled: paymentProvider === 'chapa',
+  });
+});
+
+app.get([...publicFiles.keys()], (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+  return res.sendFile(path.join(__dirname, publicFiles.get(req.path)));
+});
+
+app.get(['/api/orders/checkout-config', '/api/config'], (_req, res) => {
+  const paymentProvider = resolvePaymentProvider(config);
+  let paymentEnvironment = null;
+
+  if (paymentProvider === 'chapa') {
+    if (config.chapaSecretKey && /test/i.test(config.chapaSecretKey)) {
+      paymentEnvironment = 'test';
+    } else {
+      paymentEnvironment = config.chapaEnvironment || 'live';
+    }
   } else if (paymentProvider === 'stripe') {
     if (config.stripeSecretKey.startsWith('sk_live_') || config.stripeSecretKey.startsWith('rk_live_')) {
       paymentEnvironment = 'live';
@@ -120,12 +162,10 @@ app.get('/api/checkout-config', (_req, res) => {
     pricesApproved: config.etbPricesApproved,
     paymentProvider,
     paymentEnvironment,
+    paymentAvailable: paymentProvider !== 'unavailable',
+    provider: paymentProvider,
+    chapaEnabled: paymentProvider === 'chapa',
   });
-});
-
-app.get([...publicFiles.keys()], (req, res) => {
-  res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
-  return res.sendFile(path.join(__dirname, publicFiles.get(req.path)));
 });
 
 app.use(createGlobalRateLimiter());

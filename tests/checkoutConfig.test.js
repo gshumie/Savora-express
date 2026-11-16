@@ -11,6 +11,9 @@ const expectedFields = [
   'pricesApproved',
   'paymentProvider',
   'paymentEnvironment',
+  'paymentAvailable',
+  'provider',
+  'chapaEnabled',
 ];
 const serverSource = await readFile(new URL('../server.js', import.meta.url), 'utf8');
 const routeStart = serverSource.indexOf("app.get('/api/checkout-config'");
@@ -58,6 +61,9 @@ function assertPublicResponseShape(serializedResponse, expectedProvider, expecte
     pricesApproved: false,
     paymentProvider: expectedProvider,
     paymentEnvironment: expectedEnvironment,
+    paymentAvailable: expectedProvider !== 'unavailable',
+    provider: expectedProvider,
+    chapaEnabled: expectedProvider === 'chapa',
   });
 }
 
@@ -159,4 +165,21 @@ test('checkout config safely represents missing or invalid payment configuration
     assertPublicResponseShape(serializedResponse, provider, environment);
     assert.equal(serializedResponse.includes('SENTINEL'), false, name);
   }
+});
+
+test('checkout config returns paymentAvailable: true and provider: chapa when CHAPA_SECRET_KEY is configured in production', () => {
+  const serializedResponse = getSerializedResponse({
+    nodeEnv: 'production',
+    paymentProvider: 'chapa',
+    chapaEnvironment: 'test',
+    chapaSecretKey: 'CHASECK_TEST-actual-valid-key-value',
+    etbPricesApproved: true,
+  });
+
+  const parsed = JSON.parse(serializedResponse);
+  assert.equal(parsed.paymentProvider, 'chapa');
+  assert.equal(parsed.provider, 'chapa');
+  assert.equal(parsed.paymentAvailable, true);
+  assert.equal(parsed.chapaEnabled, true);
+  assert.equal(parsed.paymentEnvironment, 'test');
 });

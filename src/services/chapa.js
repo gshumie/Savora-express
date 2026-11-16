@@ -10,30 +10,32 @@ function hasChapaSecretKey(secretKey) {
     && !/your|example|placeholder/i.test(secretKey);
 }
 
-export function canUseChapa({ nodeEnv, environment, secretKey }) {
-  if (!hasChapaSecretKey(secretKey)) return false;
-  if (nodeEnv === 'production') {
-    return environment === 'live';
-  }
-  return ['development', 'test'].includes(nodeEnv)
-    && environment === 'test';
+export function canUseChapa({ nodeEnv, environment, secretKey } = {}) {
+  return hasChapaSecretKey(secretKey);
 }
 
-export function resolvePaymentProvider(config) {
+export function resolvePaymentProvider(config = {}) {
   const requestedProvider = config.paymentProvider;
   const isProduction = config.nodeEnv === 'production';
-  if (requestedProvider === 'chapa') {
+
+  if (requestedProvider === 'demo') {
+    return 'demo';
+  }
+
+  if (requestedProvider === 'chapa' || (!requestedProvider && hasChapaSecretKey(config.chapaSecretKey))) {
     return canUseChapa({
       nodeEnv: config.nodeEnv,
       environment: config.chapaEnvironment,
       secretKey: config.chapaSecretKey,
     }) ? 'chapa' : (isProduction ? 'unavailable' : 'demo');
   }
-  if (requestedProvider === 'stripe') {
+
+  if (requestedProvider === 'stripe' || (!requestedProvider && config.stripeSecretKey)) {
     return config.stripeSecretKey
       ? 'stripe'
       : (isProduction ? 'unavailable' : 'demo');
   }
+
   return 'demo';
 }
 

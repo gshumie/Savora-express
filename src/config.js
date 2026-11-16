@@ -103,8 +103,10 @@ const paymentStatusTokenSecret = hasUsablePaymentStatusTokenSecret
   ? configuredPaymentStatusTokenSecret
   : (isProduction ? '' : randomBytes(32).toString('hex'));
 
-const paymentProvider = process.env.PAYMENT_PROVIDER || (process.env.STRIPE_SECRET_KEY ? 'stripe' : 'demo');
-const chapaEnvironment = process.env.CHAPA_ENVIRONMENT || (isProduction ? 'live' : 'test');
+const rawChapaKey = process.env.CHAPA_SECRET_KEY || '';
+const hasChapaKey = rawChapaKey.trim().length > 0 && !/placeholder|example|your/i.test(rawChapaKey);
+const paymentProvider = process.env.PAYMENT_PROVIDER || (hasChapaKey ? 'chapa' : (process.env.STRIPE_SECRET_KEY ? 'stripe' : 'demo'));
+const chapaEnvironment = process.env.CHAPA_ENVIRONMENT || (/test/i.test(rawChapaKey) ? 'test' : (isProduction ? 'live' : 'test'));
 const chapaCurrency = process.env.CHAPA_CURRENCY || CURRENCY;
 const stripeCurrency = validateCurrencyCode(process.env.STRIPE_CURRENCY || 'USD', 'STRIPE_CURRENCY');
 const etbPricesApproved = process.env.ETB_PRICES_APPROVED === 'true';

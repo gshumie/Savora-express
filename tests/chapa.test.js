@@ -239,11 +239,11 @@ test('initializes Chapa with the exact ETB amount calculated in minor units', as
   assert.equal(result.checkoutUrl, 'https://checkout.chapa.co/checkout/payment/test');
 });
 
-test('keeps Chapa test and live environment configuration separated', () => {
-  const liveConfiguredInDevelopment = resolvePaymentProvider({
+test('resolves Chapa when valid keys are configured in development and production', () => {
+  const chapaConfiguredInDevelopment = resolvePaymentProvider({
     paymentProvider: 'chapa',
     nodeEnv: 'development',
-    chapaEnvironment: 'live',
+    chapaEnvironment: 'test',
     chapaSecretKey: 'active-test-key-from-dashboard',
   });
   const liveInProduction = resolvePaymentProvider({
@@ -256,12 +256,18 @@ test('keeps Chapa test and live environment configuration separated', () => {
     paymentProvider: 'chapa',
     nodeEnv: 'production',
     chapaEnvironment: 'test',
-    chapaSecretKey: 'active-test-key-from-dashboard',
+    chapaSecretKey: 'CHASECK_TEST-active-test-key-from-dashboard',
+  });
+  const missingInProduction = resolvePaymentProvider({
+    paymentProvider: 'chapa',
+    nodeEnv: 'production',
+    chapaSecretKey: '',
   });
 
-  assert.equal(liveConfiguredInDevelopment, 'demo');
+  assert.equal(chapaConfiguredInDevelopment, 'chapa');
   assert.equal(liveInProduction, 'chapa');
-  assert.equal(testInProduction, 'unavailable');
+  assert.equal(testInProduction, 'chapa');
+  assert.equal(missingInProduction, 'unavailable');
 });
 
 test('keeps Stripe and explicit demo provider resolution unchanged', () => {

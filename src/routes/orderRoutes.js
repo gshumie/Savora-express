@@ -87,6 +87,39 @@ async function loadCartForOrder({ cartId, sessionId, userId, database = prisma }
 class InvalidCartQuantityError extends Error {}
 class MissingCartIdentityError extends Error {}
 
+router.get('/checkout-config', (_req, res) => {
+  const paymentProvider = resolvePaymentProvider(config);
+  let paymentEnvironment = null;
+
+  if (paymentProvider === 'chapa') {
+    if (config.chapaSecretKey && /test/i.test(config.chapaSecretKey)) {
+      paymentEnvironment = 'test';
+    } else {
+      paymentEnvironment = config.chapaEnvironment || 'live';
+    }
+  } else if (paymentProvider === 'stripe') {
+    if (config.stripeSecretKey.startsWith('sk_live_') || config.stripeSecretKey.startsWith('rk_live_')) {
+      paymentEnvironment = 'live';
+    } else if (config.stripeSecretKey.startsWith('sk_test_') || config.stripeSecretKey.startsWith('rk_test_')) {
+      paymentEnvironment = 'test';
+    }
+  } else if (paymentProvider === 'demo') {
+    paymentEnvironment = 'test';
+  }
+
+  const paymentAvailable = paymentProvider !== 'unavailable';
+
+  res.json({
+    currency: config.chapaCurrency || 'ETB',
+    pricesApproved: config.etbPricesApproved,
+    paymentProvider,
+    paymentEnvironment,
+    paymentAvailable,
+    provider: paymentProvider,
+    chapaEnabled: paymentProvider === 'chapa',
+  });
+});
+
 router.get('/', requireAuth, async (req, res) => {
   try {
     const orders = await prisma.order.findMany({

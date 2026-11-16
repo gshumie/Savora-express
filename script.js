@@ -32,7 +32,7 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 	let products = [...fallbackProducts];
 	let backendAvailable = false;
 	let etbPricesApproved = false;
-	let paymentMethodLabel = "Payment method unavailable";
+	let paymentMethodLabel = "Online Payment (Chapa)";
 	let removedCartItemsCount = 0;
 	let cart = {};
 
@@ -92,30 +92,35 @@ import { normalizePersistedCart, serializePersistedCart } from "./cartPersistenc
 			const payload = await response.json();
 			const supportedProviders = ["chapa", "stripe", "demo", "unavailable"];
 			const supportedEnvironments = ["test", "live"];
+			const provider = payload?.paymentProvider || payload?.provider;
 			if (
 				payload?.currency !== CURRENCY
 				|| typeof payload?.pricesApproved !== "boolean"
-				|| !supportedProviders.includes(payload?.paymentProvider)
-				|| (payload.paymentProvider === "unavailable"
-					? payload.paymentEnvironment !== null
-					: !supportedEnvironments.includes(payload.paymentEnvironment))
+				|| !supportedProviders.includes(provider)
+				|| (provider === "unavailable"
+					? (payload.paymentEnvironment !== null && payload.paymentEnvironment !== undefined)
+					: (payload.paymentEnvironment && !supportedEnvironments.includes(payload.paymentEnvironment)))
 			) {
 				throw new Error("Checkout configuration is invalid.");
 			}
 			etbPricesApproved = payload.pricesApproved;
-			if (payload.paymentProvider === "unavailable") {
+			const isAvailable = payload?.paymentAvailable !== false && provider !== "unavailable";
+
+			if (!isAvailable || provider === "unavailable") {
 				paymentMethodLabel = "Payment method unavailable";
-			} else if (payload.paymentProvider === "demo") {
+			} else if (provider === "demo") {
 				paymentMethodLabel = "Demo (Test Mode)";
+			} else if (provider === "chapa") {
+				paymentMethodLabel = "Online Payment (Chapa)";
 			} else {
-				const name = payload.paymentProvider === "chapa" ? "Chapa" : "Stripe";
+				const name = provider === "stripe" ? "Stripe" : provider;
 				const mode = payload.paymentEnvironment === "test" ? "Test Mode" : "Live Mode";
 				paymentMethodLabel = `${name} (${mode})`;
 			}
 		} catch (error) {
-			console.error("Could not load price approval status; checkout remains disabled.", error);
+			console.error("Could not load checkout configuration.", error);
 			etbPricesApproved = false;
-			paymentMethodLabel = "Payment method unavailable";
+			paymentMethodLabel = "Online Payment (Chapa)";
 		}
 		document.querySelectorAll("[data-payment-method]").forEach((element) => {
 			element.textContent = paymentMethodLabel;
